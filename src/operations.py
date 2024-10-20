@@ -278,3 +278,4 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
         os.remove(script_path)
         logger.debug(f"Removed script file: {script_path}")
+        # cringe testS
