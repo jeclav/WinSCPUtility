@@ -1,4 +1,3 @@
-# src/main.py
 import os
 import logging
 import tkinter as tk
@@ -6,7 +5,7 @@ import threading
 from typing import List, Dict
 from dotenv import load_dotenv
 from gui import WinSCPAutomationApp
-from operations import download_logs, get_file_versions, nvram_demo_reset, nvram_reset
+from operations import download_logs, compare_file_versions, update_file_versions, nvram_demo_reset, nvram_reset
 from logger_setup import setup_logger
 from decorators import log_function_call
 from tkinter import messagebox
@@ -28,6 +27,7 @@ logger.info('Loading GUI components')
 def run_operations(
     selected_operations: Dict[str, bool],
     download_path: str,
+    master_payload_folder: str,
     selected_devices: List[str],
     on_complete: callable = None,
     root: tk.Tk = None
@@ -37,6 +37,7 @@ def run_operations(
 
     :param selected_operations: Dictionary containing the operations to run (True/False).
     :param download_path: The path where logs should be downloaded.
+    :param master_payload_folder: The path to the master payload folder for .iso file comparison.
     :param selected_devices: List of devices selected for the operation.
     :param on_complete: Callback function to be called when operations are complete.
     :param root: The Tk root object, required to schedule on_complete in the main thread.
@@ -51,7 +52,6 @@ def run_operations(
         try:
             if selected_operations.get('download_logs', False):
                 logger.info("Running download logs operation")
-                # Passing the root download_path, device-specific folder creation happens in download_logs
                 download_logs(selected_devices, download_path)
 
             if selected_operations.get('nvram_demo_reset', False):
@@ -62,20 +62,16 @@ def run_operations(
                 logger.info("Running NVRAM reset operation")
                 nvram_reset(nvram_path, selected_devices)
 
-            if selected_operations.get('get_file_versions', False):
-                logger.info("Running get device file versions operation")
-                file_versions = get_file_versions(selected_devices)
-                # Optionally, display file versions to the user
-                if root:
-                    def show_versions():
-                        version_info = ""
-                        for device, versions in file_versions.items():
-                            version_info += f"{device}:\n" + "\n".join(versions) + "\n\n"
-                        messagebox.showinfo("File Versions", version_info)
-                    root.after(0, show_versions)
+            if selected_operations.get('compare_file_versions', False):
+                logger.info("Running compare file versions operation")
+                compare_file_versions(selected_devices, master_payload_folder)
+
+            if selected_operations.get('update_file_versions', False):
+                logger.info("Running update file versions operation")
+                update_file_versions(selected_devices, master_payload_folder)
+
         except Exception as e:
             logger.error(f"Error during operations: {e}", exc_info=True)
-            # Schedule a function to show an error message to the user
             if on_complete and root:
                 def show_error():
                     messagebox.showerror("Error", f"An error occurred during operations:\n{e}")
@@ -83,7 +79,6 @@ def run_operations(
                 root.after(0, show_error)
             return
 
-        # When done, call on_complete in the main thread
         if on_complete and root:
             root.after(0, on_complete)
 
