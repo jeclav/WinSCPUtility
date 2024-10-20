@@ -207,35 +207,181 @@ def download_logs(selected_devices: List[str], download_path: str) -> None:
 
 @log_function_call
 @handle_operation_errors
-def get_file_versions(selected_devices: List[str]) -> Dict[str, List[str]]:
+def compare_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
-    Collects a list of all the .iso files contained within the /mnt/flash path for each selected device.
+    Compares .iso files on devices with the master payload folder and reports outdated files.
 
     :param selected_devices: List of selected devices.
-    :return: Dictionary of devices and their .iso files.
+    :param master_payload_folder: Path to the folder containing the latest versions of .iso files.
     """
     flash_path = os.path.normpath('/mnt/flash')
     devices_to_process = get_devices_to_process(selected_devices)
+    outdated_files_info = {}
 
-    file_versions: Dict[str, List[str]] = {}
+    # List of master payload .iso files
+    master_files = {
+        file: os.path.join(master_payload_folder, file)
+        for file in os.listdir(master_payload_folder)
+        if file.endswith('.iso')
+    }
 
     for device in devices_to_process:
-        logger.info(f"Collecting file versions for device: {device['name']}")
+        logger.info(f"Comparing .iso files for device: {device['name']}")
         script_path = create_script(device, remote_folder=flash_path, operation_type="get_file_versions")
         stdout, stderr = run_winscp_command(script_path)
 
         if stderr:
             logger.error(f"Error collecting file versions for {device['name']}: {stderr}")
-            file_versions[device['name']] = []
-        else:
-            iso_files = re.findall(r'\S+\.iso', stdout)
-            file_versions[device['name']] = iso_files
-            logger.info(f"Found .iso files for device {device['name']}: {iso_files}")
+            continue
+
+        # Parse the .iso files on the device
+        device_files = re.findall(r'\S+\.iso', stdout)
+        logger.debug(f"Found .iso files for device {device['name']}: {device_files}")
+
+        outdated_files = []
+
+        # Compare device files with master payload
+        for file in device_files:
+            if file not in master_files:
+                logger.info(f"File {file} on device {device['name']} is outdated or missing from the master payload.")
+                outdated_files.append(file)
+
+        if outdated_files:
+            outdated_files_info[device['name']] = outdated_files
 
         os.remove(script_path)
         logger.debug(f"Removed script file: {script_path}")
 
-    return file_versions
+    # Display outdated files to the user
+    if outdated_files_info:
+        display_outdated_files_to_user(outdated_files_info)
+    else:
+        logger.info("All files are up-to-date.")
+
+
+@log_function_call
+@handle_operation_errors
+def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
+    """
+    Updates the .iso files on devices by deleting outdated files and uploading the latest versions.
+
+    :param selected_devices: List of selected devices.
+    :param master_payload_folder: Path to the folder containing the latest versions of .iso files.
+    """
+    flash_path = os.path.normpath('/mnt/flash')
+    devices_to_process = get_devices_to_process(selected_devices)
+
+    # List of master payload .iso files
+    master_files = {
+        file: os.path.join(master_payload_folder, file)
+        for file in os.listdir(master_payload_folder)
+        if file.endswith('.iso')
+    }
+
+    for device in devices_to_process:
+        logger.info(f"Updating .iso files for device: {device['name']}")
+        script_path = create_script(device, remote_folder=flash_path, operation_type="get_file_versions")
+        stdout, stderr = run_winscp_command(script_path)
+
+        if stderr:
+            logger.error(f"Error collecting file versions for {device['name']}: {stderr}")
+            continue
+
+        # Parse the .iso files on the device
+        device_files = re.findall(r'\S+\.iso', stdout)
+        logger.debug(f"Found .iso files for device {device['name']}: {device_files}")
+
+        outdated_files = []
+
+        # Identify outdated files
+        for file in device_files:
+            if file not in master_files:
+                logger.info(f"File {file} on device {device['name']} is outdated or missing from the master payload.")
+                outdated_files.append(file)
+
+        if outdated_files:
+            # Delete outdated files
+            logger.info(f"Deleting outdated files from device {device['name']}: {outdated_files}")
+            delete_outdated_files(device, outdated_files)
+
+            # Upload latest versions
+            logger.info(f"Uploading latest versions to device {device['name']}")
+            upload_latest_files(device, master_files)
+
+        os.remove(script_path)
+        logger.debug(f"Removed script file: {script_path}")
+
+
+@log_function_call
+def delete_outdated_files(device: Dict[str, str], outdated_files: List[str]) -> None:
+    """
+    Deletes the outdated .iso files from the device.
+
+    :param device: The device dictionary containing connection details.
+    :param outdated_files: List of outdated .iso files to delete.
+    """
+    remote_folder = '/mnt/flash'
+
+    # Create a script to delete the outdated files
+    delete_commands = '\n'.join([f'rm "{remote_folder}/{file}"' for file in outdated_files])
+    
+    script_content = f"""
+    open sftp://{device['username']}:{device['password']}@{device['ip']}
+    {delete_commands}
+    exit
+    """
+
+    # Save and run the script
+    script_path = create_script(device, operation_type="delete_files", remote_folder=remote_folder)
+    with open(script_path, 'w') as script_file:
+        script_file.write(script_content)
+    
+    run_winscp_command(script_path)
+    logger.info(f"Deleted outdated files from device {device['name']}")
+    os.remove(script_path)
+
+
+@log_function_call
+def upload_latest_files(device: Dict[str, str], master_files: Dict[str, str]) -> None:
+    """
+    Uploads the latest .iso files from the master payload folder to the device.
+
+    :param device: The device dictionary containing connection details.
+    :param master_files: Dictionary of .iso file names and their paths in the master payload folder.
+    """
+    remote_folder = '/mnt/flash'
+    
+    # Create a script to upload the latest files
+    upload_commands = '\n'.join([f'put "{local_file}" "{remote_folder}/{file}"' for file, local_file in master_files.items()])
+
+    script_content = f"""
+    open sftp://{device['username']}:{device['password']}@{device['ip']}
+    {upload_commands}
+    exit
+    """
+
+    # Save and run the script
+    script_path = create_script(device, operation_type="upload_files", remote_folder=remote_folder)
+    with open(script_path, 'w') as script_file:
+        script_file.write(script_content)
+
+    run_winscp_command(script_path)
+    logger.info(f"Uploaded latest files to device {device['name']}")
+    os.remove(script_path)
+
+
+@log_function_call
+def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) -> None:
+    """
+    Displays the outdated files to the user via a message box.
+
+    :param outdated_files_info: Dictionary of devices and their outdated .iso files.
+    """
+    message = "The following devices have outdated .iso files:\n\n"
+    for device, files in outdated_files_info.items():
+        message += f"{device}:\n" + "\n".join(files) + "\n\n"
+    
+    messagebox.showinfo("Outdated ISO Files", message)
 
 
 @log_function_call
