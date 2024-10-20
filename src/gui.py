@@ -3,6 +3,7 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, BooleanVar
 import logging
+from tkinter import ttk  # For the progress bar
 from typing import List
 from decorators import log_function_call
 
@@ -35,53 +36,128 @@ class WinSCPAutomationApp:
         self.compare_file_versions = BooleanVar()
         self.update_file_versions = BooleanVar()
 
-        self.device_listbox = self.create_device_listbox()
-        self.create_checkbox("Download Logs", self.download_logs)
-        self.create_checkbox("NVRAM Demo Reset", self.nvram_demo_reset)
-        self.create_checkbox("NVRAM Reset", self.nvram_reset)
-        self.create_checkbox("Compare File Versions", self.compare_file_versions)
-        self.create_checkbox("Update File Versions", self.update_file_versions)
+        # Create the layout for better user experience
+        self.create_layout()
 
-        self.create_button("Open Configuration File", self.open_config_file)
-        self.create_button("Select Download Folder", self.select_download_folder)
-        self.create_button("Select Master Payload Folder", self.select_master_payload_folder)
-        self.run_operations_button = self.create_button("Run Operations", self.run_operations_clicked)
-
-        self.download_folder_label = tk.Label(root, text=f"Download Folder: {self.download_path}")
-        self.download_folder_label.pack(pady=10)
-        self.master_payload_folder_label = tk.Label(root, text=f"Master Payload Folder: {self.master_payload_folder}")
-        self.master_payload_folder_label.pack(pady=10)
+        # Progress bar for operations (initially hidden)
+        self.progress_bar = None
 
         logger.debug("WinSCPAutomationApp initialized successfully")
 
     @log_function_call
-    def create_checkbox(self, label: str, var: BooleanVar) -> None:
-        chk = tk.Checkbutton(self.root, text=label, variable=var)
+    def create_layout(self):
+        """
+        Organize the layout into sections using frames.
+        """
+        # Device selection section
+        device_frame = tk.Frame(self.root)
+        device_frame.pack(pady=10)
+
+        self.create_device_listbox(device_frame)
+        self.create_device_selection_buttons(device_frame)
+
+        # Operations section
+        operations_frame = tk.Frame(self.root)
+        operations_frame.pack(pady=10)
+
+        self.create_checkbox("Download Logs", self.download_logs, operations_frame)
+        self.create_checkbox("NVRAM Demo Reset", self.nvram_demo_reset, operations_frame)
+        self.create_checkbox("NVRAM Reset", self.nvram_reset, operations_frame)
+        self.create_checkbox("Compare File Versions", self.compare_file_versions, operations_frame)
+        self.create_checkbox("Update File Versions", self.update_file_versions, operations_frame)
+
+        # Folder selection section
+        folder_frame = tk.Frame(self.root)
+        folder_frame.pack(pady=10)
+
+        # Download folder selection and label
+        download_folder_frame = tk.Frame(folder_frame)
+        download_folder_frame.pack(pady=10)
+        self.create_button("Select Download Folder", self.select_download_folder, download_folder_frame)
+        self.download_folder_label = tk.Label(download_folder_frame, text=f"Download Folder: {self.download_path}")
+        self.download_folder_label.pack(pady=5)  # Placed below the button
+
+        # Master payload folder selection and label
+        master_payload_folder_frame = tk.Frame(folder_frame)
+        master_payload_folder_frame.pack(pady=10)
+        self.create_button("Select Master Payload Folder", self.select_master_payload_folder, master_payload_folder_frame)
+        self.master_payload_folder_label = tk.Label(master_payload_folder_frame, text=f"Master Payload Folder: {self.master_payload_folder}")
+        self.master_payload_folder_label.pack(pady=5)  # Placed below the button
+
+        # Run operations button
+        self.run_operations_button = self.create_button("Run Operations", self.run_operations_clicked)
+    
+    @log_function_call
+    def show_progress_bar(self):
+        """
+        Show the progress bar and start it.
+        """
+        if not self.progress_bar:
+            self.progress_bar = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, length=200, mode='indeterminate')
+            self.progress_bar.pack(pady=10)
+        self.progress_bar.start()
+
+    @log_function_call
+    def hide_progress_bar(self):
+        """
+        Hide the progress bar and stop it.
+        """
+        if self.progress_bar:
+            self.progress_bar.stop()
+            self.progress_bar.pack_forget()  # Hide the progress bar
+
+    @log_function_call
+    def create_device_selection_buttons(self, parent_frame):
+        """
+        Create buttons for selecting and deselecting all devices.
+        """
+        select_all_button = tk.Button(parent_frame, text="Select All", command=self.select_all_devices)
+        deselect_all_button = tk.Button(parent_frame, text="Deselect All", command=self.deselect_all_devices)
+        select_all_button.pack(pady=5, side=tk.LEFT)
+        deselect_all_button.pack(pady=5, side=tk.RIGHT)
+
+    @log_function_call
+    def select_all_devices(self):
+        """
+        Select all devices in the listbox.
+        """
+        self.device_listbox.select_set(0, tk.END)
+
+    @log_function_call
+    def deselect_all_devices(self):
+        """
+        Deselect all devices in the listbox.
+        """
+        self.device_listbox.select_clear(0, tk.END)
+
+    @log_function_call
+    def create_checkbox(self, label: str, var: BooleanVar, parent_frame=None) -> None:
+        chk = tk.Checkbutton(parent_frame or self.root, text=label, variable=var)
         chk.pack(anchor=tk.W)
         logger.debug(f"Checkbox '{label}' created")
 
     @log_function_call
-    def create_button(self, label: str, command: callable) -> tk.Button:
-        btn = tk.Button(self.root, text=label, command=command)
+    def create_button(self, label: str, command: callable, parent_frame=None) -> tk.Button:
+        btn = tk.Button(parent_frame or self.root, text=label, command=command)
         btn.pack(pady=5)
         logger.debug(f"Button '{label}' created")
         return btn
 
     @log_function_call
-    def create_device_listbox(self) -> tk.Listbox:
-        frame = tk.Frame(self.root)
+    def create_device_listbox(self, parent_frame=None) -> tk.Listbox:
+        frame = tk.Frame(parent_frame or self.root)
         frame.pack(pady=10)
 
         scrollbar = tk.Scrollbar(frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        device_listbox = tk.Listbox(frame, selectmode=tk.MULTIPLE, width=50, height=10, yscrollcommand=scrollbar.set)
-        device_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
+        self.device_listbox = tk.Listbox(frame, selectmode=tk.MULTIPLE, width=50, height=10, yscrollcommand=scrollbar.set)
+        self.device_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
 
-        scrollbar.config(command=device_listbox.yview)
+        scrollbar.config(command=self.device_listbox.yview)
 
-        self.populate_device_list(device_listbox)
-        return device_listbox
+        self.populate_device_list(self.device_listbox)
+        return self.device_listbox
 
     @log_function_call
     def populate_device_list(self, listbox: tk.Listbox) -> None:
@@ -115,16 +191,16 @@ class WinSCPAutomationApp:
         folder_selected = filedialog.askdirectory(initialdir=self.download_path, title="Select Download Folder")
         if folder_selected:
             self.download_path = os.path.normpath(folder_selected)
-            self.download_folder_label.config(text=f"Download Folder: {self.download_path}")
             self.save_setting("download_path", self.download_path)
+            self.download_folder_label.config(text=f"Download Folder: {self.download_path}")
 
     @log_function_call
     def select_master_payload_folder(self) -> None:
         folder_selected = filedialog.askdirectory(initialdir=self.master_payload_folder, title="Select Master Payload Folder")
         if folder_selected:
             self.master_payload_folder = os.path.normpath(folder_selected)
-            self.master_payload_folder_label.config(text=f"Master Payload Folder: {self.master_payload_folder}")
             self.save_setting("master_payload_folder", self.master_payload_folder)
+            self.master_payload_folder_label.config(text=f"Master Payload Folder: {self.master_payload_folder}")
 
     @log_function_call
     def load_saved_setting(self, key: str, default_value: str) -> str:
@@ -150,20 +226,26 @@ class WinSCPAutomationApp:
 
     @log_function_call
     def run_operations_clicked(self):
-        # Disable the button
-        self.run_operations_button.config(state=tk.DISABLED)
-        selected_devices = self.get_selected_devices()
+        # Disable buttons during execution
+        self.run_operations_button.config(state=tk.DISABLED, text="Running...")
+        self.show_progress_bar()
 
+        # Run operations
+        selected_devices = self.get_selected_devices()
         if not selected_devices:
             messagebox.showwarning("No Devices Selected", "Please select at least one device.")
-            self.run_operations_button.config(state=tk.NORMAL)
+            self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
+            self.hide_progress_bar()
             return
 
-        if not any([self.download_logs.get(), self.nvram_demo_reset.get(), self.nvram_reset.get(), self.compare_file_versions.get(), self.update_file_versions.get()]):
+        if not any([self.download_logs.get(), self.nvram_demo_reset.get(), self.nvram_reset.get(), 
+                    self.compare_file_versions.get(), self.update_file_versions.get()]):
             messagebox.showwarning("No Operations Selected", "Please select at least one operation.")
-            self.run_operations_button.config(state=tk.NORMAL)
+            self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
+            self.hide_progress_bar()
             return
 
+        # Call the callback function
         self.operations_callback({
             "download_logs": self.download_logs.get(),
             "nvram_demo_reset": self.nvram_demo_reset.get(),
@@ -174,7 +256,7 @@ class WinSCPAutomationApp:
 
     @log_function_call
     def on_operations_complete(self):
-        # Re-enable the button
-        self.run_operations_button.config(state=tk.NORMAL)
-        # Optionally show a message to the user
+        # Re-enable the button when the operation is done
+        self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
+        self.hide_progress_bar()
         messagebox.showinfo("Operations Complete", "Selected operations have completed.")
