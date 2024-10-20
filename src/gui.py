@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 logger.info('Initializing GUI')
 logger.debug('Setting up buttons and event handlers')
 
+
 class WinSCPAutomationApp:
     def __init__(self, root: tk.Tk, operations_callback: callable) -> None:
         logger.debug("Initializing WinSCPAutomationApp")
@@ -140,6 +141,7 @@ class WinSCPAutomationApp:
         self.run_operations_button.config(state=tk.DISABLED)
         # Start the operations
         selected_devices = self.get_selected_devices()
+
         if not selected_devices:
             messagebox.showwarning("No Devices Selected", "Please select at least one device.")
             self.run_operations_button.config(state=tk.NORMAL)
@@ -153,6 +155,7 @@ class WinSCPAutomationApp:
         self.operations_callback({
             "download_logs": self.download_logs.get(),
             "nvram_demo_reset": self.nvram_demo_reset.get(),
+            "nvram_reset": self.nvram_reset.get(),
             "get_file_versions": self.get_file_versions.get()
         }, self.download_path, selected_devices, self.on_operations_complete, self.root)
 

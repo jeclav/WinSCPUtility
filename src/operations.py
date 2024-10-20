@@ -1,4 +1,3 @@
-# src/operations.py
 import os
 import configparser
 import subprocess
@@ -9,6 +8,7 @@ from decorators import log_function_call, handle_operation_errors
 
 # Define a module-level logger
 logger = logging.getLogger(__name__)
+
 
 @log_function_call
 def load_devices(config_file: str) -> List[Dict[str, str]]:
@@ -46,6 +46,7 @@ def load_devices(config_file: str) -> List[Dict[str, str]]:
             raise ValueError(f"Missing required field {e} in device section [{device}]") from e
     return devices
 
+
 @log_function_call
 def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
     """
@@ -60,10 +61,11 @@ def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
     logger.debug(f"Devices to process: {devices_to_process}")
     return devices_to_process
 
+
 @log_function_call
 def create_script(
     device: Dict[str, str],
-    remote_folder: str,
+    remote_folder: Optional[str] = None,
     download_path: Optional[str] = None,
     operation_type: str = "download"
 ) -> str:
@@ -79,7 +81,8 @@ def create_script(
     logger.debug(f"Creating WinSCP script for device '{device['name']}', operation '{operation_type}'")
 
     # Normalize paths for the script
-    remote_folder = remote_folder.replace('\\', '/')
+    if remote_folder:
+        remote_folder = remote_folder.replace('\\', '/')
     script_dir = os.path.normpath(os.getenv('WINSCP_SCRIPT_DIR', './scripts'))
 
     # Construct different scripts based on the operation type
@@ -89,13 +92,13 @@ def create_script(
             logger.error("download_path is required for the download operation")
             raise ValueError("download_path is required for the download operation")
         
-        # download_path = os.path.normpath(download_path)
-        download_path = os.path.join(os.path.normpath(download_path),f"{device['name']}.txt")
-        logger.debug(f"Downloading logs from: {device['name']} to: {download_path}")
+        download_folder = os.path.join(os.path.normpath(download_path), f"{device['name']}")
+        os.makedirs(download_folder, exist_ok=True)
+        logger.debug(f"Downloading logs from: {device['name']} to: {download_folder}")
         
         script_content = f"""
             open sftp://{device['username']}:{device['password']}@{device['ip']}
-            lcd "{download_path}"
+            lcd "{download_folder}"
             cd /tmp
             get logs
             cd /mnt
@@ -103,24 +106,33 @@ def create_script(
             exit
             """
     elif operation_type == "nvram_reset":
+        if not remote_folder:
+            logger.error("remote_folder is required for NVRAM operations")
+            raise ValueError("remote_folder is required for NVRAM operations")
         script_content = f"""
-open sftp://{device['username']}:{device['password']}@{device['ip']}
-rm "{remote_folder}/*"
-exit
-"""
+            open sftp://{device['username']}:{device['password']}@{device['ip']}
+            rm "{remote_folder}/*"
+            exit
+            """
     elif operation_type == "nvram_demo_reset":
+        if not remote_folder:
+            logger.error("remote_folder is required for NVRAM operations")
+            raise ValueError("remote_folder is required for NVRAM operations")
         script_content = f"""
-open sftp://{device['username']}:{device['password']}@{device['ip']}
-# Delete all files except 'Demo.dat' in the remote folder
-call find "{remote_folder}" -type f ! -name "Demo.dat" -exec rm {{}} \\;
-exit
-"""
+            open sftp://{device['username']}:{device['password']}@{device['ip']}
+            # Delete all files except 'Demo.dat' in the remote folder
+            call find "{remote_folder}" -type f ! -name "Demo.dat" -exec rm {{}} \\;
+            exit
+            """
     elif operation_type == "get_file_versions":
+        if not remote_folder:
+            logger.error("remote_folder is required for get_file_versions operation")
+            raise ValueError("remote_folder is required for get_file_versions operation")
         script_content = f"""
-open sftp://{device['username']}:{device['password']}@{device['ip']}
-ls "{remote_folder}/*.iso"
-exit
-"""
+            open sftp://{device['username']}:{device['password']}@{device['ip']}
+            ls "{remote_folder}/*.iso"
+            exit
+            """
     else:
         logger.error(f"Unsupported operation_type: {operation_type}")
         raise ValueError(f"Unsupported operation_type: {operation_type}")
@@ -135,6 +147,7 @@ exit
     logger.debug(f"Script created at path: {script_path}")
     return script_path
 
+
 @log_function_call
 def run_winscp_command(script_path: str) -> Tuple[str, str]:
     """
@@ -148,13 +161,12 @@ def run_winscp_command(script_path: str) -> Tuple[str, str]:
     # Normalize the script path
     script_path = os.path.normpath(script_path)
 
-
     if not os.path.exists(script_path):
         logger.error(f"Script file '{script_path}' not found.")
         raise FileNotFoundError(f"Script file '{script_path}' not found.")
 
-    winscp_path = os.path.normpath(os.getenv('WINSCP_PATH', 'C:\Program Files (x86)\WinSCP\winscp.com'))
-    winscp_log_path = os.path.normpath(os.getenv('WINSCP_LOG_PATH', "./logs/winscp_.log"))
+    winscp_path = os.path.normpath(os.getenv('WINSCP_PATH', 'C:\\Program Files (x86)\\WinSCP\\winscp.com'))
+    winscp_log_path = os.path.normpath(os.getenv('WINSCP_LOG_PATH', './logs/winscp.log'))
    
     command = f'"{winscp_path}" /script="{script_path}" /log="{winscp_log_path}"'
     logging.debug(f"Running command: {command}")
@@ -166,32 +178,28 @@ def run_winscp_command(script_path: str) -> Tuple[str, str]:
         logger.error(f"WinSCP command error: {result.stderr}")
     return result.stdout, result.stderr
 
+
 @log_function_call
 @handle_operation_errors
 def download_logs(selected_devices: List[str], download_path: str) -> None:
     """
-    Downloads logs from both MNT and TMP paths for selected devices.
+    Downloads logs from selected devices.
 
     :param selected_devices: List of selected devices.
     :param download_path: Path to the local folder where logs will be downloaded.
     """
-    # mnt_log_path = os.path.normpath(os.getenv('MNT_LOG_PATH', '/mnt/logs'))
-    tmp_log_path = os.path.normpath(os.getenv('TMP_LOG_PATH', '/tmp/logs'))
-
     devices_to_process = get_devices_to_process(selected_devices)
 
     for device in devices_to_process:
         logger.info(f"Downloading logs for device: {device['name']}")
-
-        # Download from both mnt & tmp
-        script_path = create_script(device,tmp_log_path,download_path, operation_type="download") # clean up positional arguements: tmp and mnt path not required
+        script_path = create_script(device, download_path=download_path, operation_type="download")
 
         stdout, stderr = run_winscp_command(script_path)
 
         if stderr:
-            logger.error(f"Error downloading logs for {device['name']} from MNT path: {stderr}")
+            logger.error(f"Error downloading logs for {device['name']}: {stderr}")
         else:
-            logger.info(f"Successfully downloaded logs for device {device['name']} from MNT path")
+            logger.info(f"Successfully downloaded logs for device {device['name']}")
 
         os.remove(script_path)
         logger.debug(f"Removed script file: {script_path}")
@@ -207,24 +215,20 @@ def get_file_versions(selected_devices: List[str]) -> Dict[str, List[str]]:
     :return: Dictionary of devices and their .iso files.
     """
     flash_path = os.path.normpath('/mnt/flash')
-
     devices_to_process = get_devices_to_process(selected_devices)
 
     file_versions: Dict[str, List[str]] = {}
 
     for device in devices_to_process:
         logger.info(f"Collecting file versions for device: {device['name']}")
-        script_path = create_script(device, flash_path, operation_type="get_file_versions")
+        script_path = create_script(device, remote_folder=flash_path, operation_type="get_file_versions")
         stdout, stderr = run_winscp_command(script_path)
 
         if stderr:
             logger.error(f"Error collecting file versions for {device['name']}: {stderr}")
             file_versions[device['name']] = []
         else:
-            # iso_files = [line.strip() for line in stdout.strip().split('\n') if line.strip()]
-            # file_versions[device['name']] = iso_files
-            # logger.info(f"Found .iso files for device {device['name']}: {iso_files}")
-            iso_files = re.findall(r'\S+\.iso',stdout)
+            iso_files = re.findall(r'\S+\.iso', stdout)
             file_versions[device['name']] = iso_files
             logger.info(f"Found .iso files for device {device['name']}: {iso_files}")
 
@@ -232,6 +236,7 @@ def get_file_versions(selected_devices: List[str]) -> Dict[str, List[str]]:
         logger.debug(f"Removed script file: {script_path}")
 
     return file_versions
+
 
 @log_function_call
 @handle_operation_errors
@@ -246,15 +251,17 @@ def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
     for device in devices_to_process:
         logger.info(f"Resetting NVRAM for device: {device['name']}")
-        script_path = create_script(device, nvram_path, operation_type="nvram_reset")
+        script_path = create_script(device, remote_folder=nvram_path, operation_type="nvram_reset")
         stdout, stderr = run_winscp_command(script_path)
 
         if stderr:
             logger.error(f"Error resetting NVRAM for {device['name']}: {stderr}")
         else:
             logger.info(f"Successfully reset NVRAM for {device['name']}")
+        
         os.remove(script_path)
         logger.debug(f"Removed script file: {script_path}")
+
 
 @log_function_call
 @handle_operation_errors
@@ -269,13 +276,13 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
     for device in devices_to_process:
         logger.info(f"Running demo NVRAM reset for device: {device['name']}")
-        script_path = create_script(device, nvram_path, operation_type="nvram_demo_reset")
+        script_path = create_script(device, remote_folder=nvram_path, operation_type="nvram_demo_reset")
         stdout, stderr = run_winscp_command(script_path)
 
         if stderr:
             logger.error(f"Error during demo reset for {device['name']}: {stderr}")
         else:
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
+        
         os.remove(script_path)
         logger.debug(f"Removed script file: {script_path}")
-        # cringe testS
