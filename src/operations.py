@@ -4,6 +4,7 @@ import subprocess
 import re
 import logging
 from typing import List, Dict, Tuple, Optional
+from tkinter import messagebox
 from decorators import log_function_call, handle_operation_errors
 
 # Define a module-level logger
