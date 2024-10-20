@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 logger.debug('Application started')
 logger.info('Loading GUI components')
 
+
 @log_function_call
 def run_operations(
     selected_operations: Dict[str, bool],
@@ -45,13 +46,12 @@ def run_operations(
 
     def execute_operations():
         logger.info("Running selected operations")
-        mnt_log_path = os.getenv('MNT_LOG_PATH', '/mnt/log')
-        tmp_log_path = os.getenv('TMP_LOG_PATH', '/tmp/logs')
         nvram_path = os.getenv('NVRAM_PATH', '/mnt/nvram')
 
         try:
             if selected_operations.get('download_logs', False):
                 logger.info("Running download logs operation")
+                # Passing the root download_path, device-specific folder creation happens in download_logs
                 download_logs(selected_devices, download_path)
 
             if selected_operations.get('nvram_demo_reset', False):
@@ -87,10 +87,9 @@ def run_operations(
         if on_complete and root:
             root.after(0, on_complete)
 
-    operation_thread = threading.Thread(
-        target=execute_operations
-    )
+    operation_thread = threading.Thread(target=execute_operations)
     operation_thread.start()
+
 
 @log_function_call
 def main() -> None:
@@ -102,6 +101,7 @@ def main() -> None:
     root = tk.Tk()
     app = WinSCPAutomationApp(root, run_operations)
     root.mainloop()
+
 
 if __name__ == "__main__":
     logger.info("Starting the WinSCP Automation Tool")
