@@ -1,0 +1,3 @@
+open sftp://root:root1234@172.17.28.89
+            ls "/mnt/flash/*.iso"
+            exit
