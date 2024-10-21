@@ -1,3 +1,4 @@
+# src/gui.py
 import configparser
 import os
 import tkinter as tk
