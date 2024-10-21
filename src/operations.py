@@ -212,9 +212,9 @@ def test_winscp_session():
     session = Session()
     session_options = SessionOptions()
     session_options.Protocol = Protocol.Sftp
-    session_options.HostName = 'example.com'  # Use valid hostname
-    session_options.UserName = 'username'
-    session_options.Password = 'password'
+    session_options.HostName = '172.17.28.65'  # Use valid hostname
+    session_options.UserName = 'root'
+    session_options.Password = 'root1234'
     session_options.GiveUpSecurityAndAcceptAnySshHostKey = True
 
     try:
@@ -224,3 +224,4 @@ def test_winscp_session():
         print(f"Error: {e}")
     finally:
         session.Dispose()
+test_winscp_session()
