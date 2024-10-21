@@ -102,7 +102,8 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
 
         try:
             device_download_folder = os.path.join(download_path, device['name'])
-            os.makedirs(device_download_folder, exist_ok=True)
+            if not os.path.isdir(device_download_folder):
+                os.makedirs(device_download_folder, exist_ok=True)
 
             logger.info(f"Downloading logs for device: {device['name']} into {device_download_folder}")
             transfer_options = TransferOptions()
