@@ -116,7 +116,7 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder, False, transfer_options)
             result.Check()
 
-            # Download logs from /mnt/log with subfolder structure preserved
+            # Download logs from /mnt/log/ with subfolder structure preserved
             result = session.GetFiles("/mnt/log/*", device_download_folder, False, transfer_options)
             result.Check()
 
