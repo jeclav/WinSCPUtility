@@ -1,3 +1,4 @@
+# src/main.py
 import os
 import logging
 import tkinter as tk
