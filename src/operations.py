@@ -12,10 +12,14 @@ logger = logging.getLogger(__name__)
 
 def create_session(device: Dict[str, str]) -> Optional[Session]:
     """
-    Creates and opens a WinSCP session using the device credentials.
-    
-    :param device: Device information (username, password, etc.)
-    :return: Open WinSCP session or None if failed
+    Creates and opens a WinSCP session using the provided device credentials.
+
+    :param device: A dictionary containing device connection information with keys:
+        - 'name': Name of the device.
+        - 'ip': IP address of the device.
+        - 'username': Username for authentication.
+        - 'password': Password for authentication.
+    :return: An active WinSCP session if successful, or None if the session creation fails.
     """
     try:
         session = Session()
@@ -34,11 +38,25 @@ def create_session(device: Dict[str, str]) -> Optional[Session]:
         return None
 
 def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
+    """
+    Filters the devices based on the selected device names.
+
+    :param selected_devices: List of device names chosen for processing.
+    :return: A list of device dictionaries containing connection information for each selected device.
+    """
     config_file = os.path.normpath(os.getenv('CONFIG_FILE', 'devices.ini'))
     devices = load_devices(config_file)
     return [device for device in devices if device['name'] in selected_devices]
 
 def load_devices(config_file: str) -> List[Dict[str, str]]:
+    """
+    Loads device configurations from a specified configuration file.
+
+    :param config_file: Path to the INI configuration file containing device sections.
+    :return: A list of dictionaries, each containing connection information for a device.
+    :raises FileNotFoundError: If the configuration file is not found.
+    :raises ValueError: If required device information is missing in the configuration file.
+    """
     logger.debug(f"Loading device configurations from {config_file}")
 
     if not os.path.exists(config_file):
@@ -67,6 +85,13 @@ def load_devices(config_file: str) -> List[Dict[str, str]]:
     return devices
 
 def download_logs(selected_devices: List[str], download_path: str) -> bool:
+    """
+    Downloads logs from selected devices to a specified local folder.
+
+    :param selected_devices: List of device names chosen for log download.
+    :param download_path: Path to the local directory where logs should be downloaded.
+    :return: True if logs are successfully downloaded from all devices, False if errors occur for any device.
+    """
     devices_to_process = get_devices_to_process(selected_devices)
     success = True
 
@@ -99,6 +124,13 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
     return success
 
 def compare_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
+    """
+    Compares .iso files on selected devices with the master payload folder and reports outdated files.
+
+    :param selected_devices: List of device names chosen for comparison.
+    :param master_payload_folder: Path to the local folder containing the latest .iso files.
+    :return: None
+    """
     flash_path = '/mnt/flash'
     devices_to_process = get_devices_to_process(selected_devices)
     outdated_files_info = {}
@@ -128,6 +160,13 @@ def compare_file_versions(selected_devices: List[str], master_payload_folder: st
     display_outdated_files_to_user(outdated_files_info)
 
 def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
+    """
+    Updates .iso files on selected devices by deleting outdated files and uploading the latest versions.
+
+    :param selected_devices: List of device names chosen for the update.
+    :param master_payload_folder: Path to the local folder containing the latest .iso files.
+    :return: None
+    """
     flash_path = '/mnt/flash'
     devices_to_process = get_devices_to_process(selected_devices)
     master_files = {
@@ -159,6 +198,13 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
             session.Dispose()
 
 def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
+    """
+    Resets the NVRAM by deleting all files in the specified path for selected devices.
+
+    :param nvram_path: Path to the NVRAM directory on the devices.
+    :param selected_devices: List of device names chosen for NVRAM reset.
+    :return: None
+    """
     devices_to_process = get_devices_to_process(selected_devices)
     
     for device in devices_to_process:
@@ -176,6 +222,13 @@ def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
             session.Dispose()
 
 def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
+    """
+    Performs a demo reset on the NVRAM by deleting all files except 'Demo.dat'.
+
+    :param nvram_path: Path to the NVRAM directory on the devices.
+    :param selected_devices: List of device names chosen for the demo reset.
+    :return: None
+    """
     devices_to_process = get_devices_to_process(selected_devices)
 
     for device in devices_to_process:
@@ -197,6 +250,12 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
             session.Dispose()
 
 def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) -> None:
+    """
+    Displays a message box showing devices with outdated .iso files.
+
+    :param outdated_files_info: A dictionary with device names as keys and a list of outdated .iso files as values.
+    :return: None
+    """
     if not outdated_files_info:
         logger.info("All files are up-to-date.")
         return
@@ -209,6 +268,11 @@ def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) ->
     messagebox.showinfo("Outdated ISO Files", message)
 
 def test_winscp_session():
+    """
+    Tests the creation and opening of a WinSCP session with example connection parameters.
+
+    :return: None
+    """
     session = Session()
     session_options = SessionOptions()
     session_options.Protocol = Protocol.Sftp
@@ -224,4 +288,4 @@ def test_winscp_session():
         print(f"Error: {e}")
     finally:
         session.Dispose()
-test_winscp_session()
+
