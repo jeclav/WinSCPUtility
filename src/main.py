@@ -43,14 +43,6 @@ def run_operations(
 ) -> None:
     """
     Runs selected operations based on the user's choice in a separate thread.
-
-    :param selected_operations: Dictionary containing the operations to run (True/False).
-    :param download_path: The path where logs should be downloaded.
-    :param master_payload_folder: The path to the master payload folder for .iso file comparison.
-    :param selected_devices: List of devices selected for the operation.
-    :param on_complete: Callback function to be called when operations are complete.
-    :param root: The Tk root object, required to schedule on_complete in the main thread.
-    :return: None
     """
     logger.info("Preparing to run selected operations")
 
@@ -76,21 +68,55 @@ def run_operations(
 
         try:
             for op in ordered_ops:
+                # Before starting each operation, prompt the user
+                operation_name = op.replace('_', ' ').title()
+
+                # Use an event to wait for the user's decision
+                proceed_event = threading.Event()
+
+                def prompt_user():
+                    result = messagebox.askyesno(
+                        "Next Operation",
+                        f"The next operation is '{operation_name}'.\nDo you want to continue?"
+                    )
+                    if result:
+                        proceed_event.set()
+                    else:
+                        # User chose to abort
+                        if on_complete:
+                            on_complete()
+                        proceed_event.set()
+                        return
+
+                # Show the prompt in the main thread
+                root.after(0, prompt_user)
+
+                # Wait until the user makes a decision
+                proceed_event.wait()
+
+                if not proceed_event.is_set():
+                    # User aborted
+                    logger.info(f"Operation '{operation_name}' was aborted by the user.")
+                    return
+
+                logger.info(f"Starting operation '{operation_name}'")
+
+                # Execute the operation on all selected devices
                 if op == 'compare_file_versions':
-                    logger.info("Running compare file versions operation")
                     compare_file_versions(selected_devices, master_payload_folder)
                 elif op == 'download_logs':
-                    logger.info("Running download logs operation")
                     download_logs(selected_devices, download_path)
                 elif op == 'update_file_versions':
-                    logger.info("Running update file versions operation")
                     update_file_versions(selected_devices, master_payload_folder)
                 elif op == 'nvram_reset':
-                    logger.info("Running NVRAM reset operation")
                     nvram_reset(nvram_path, selected_devices)
                 elif op == 'nvram_demo_reset':
-                    logger.info("Running NVRAM demo reset operation")
                     nvram_demo_reset(nvram_path, selected_devices)
+
+            # All operations completed
+            if on_complete and root:
+                root.after(0, on_complete)
+
         except Exception as e:
             logger.error(f"Error during operations: {e}", exc_info=True)
             if on_complete and root:
@@ -100,9 +126,6 @@ def run_operations(
                 root.after(0, show_error)
             return
 
-        if on_complete and root:
-            root.after(0, on_complete)
-
     operation_thread = threading.Thread(target=execute_operations)
     operation_thread.start()
 
@@ -111,8 +134,6 @@ def run_operations(
 def main() -> None:
     """
     Main function to initialize the GUI and run the application.
-
-    :return: None
     """
     root = tk.Tk()
     app = WinSCPAutomationApp(root, run_operations)
