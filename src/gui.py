@@ -1,4 +1,5 @@
 # src/gui.py
+
 import configparser
 import os
 import tkinter as tk
@@ -7,6 +8,7 @@ import logging
 from tkinter import ttk  # For the progress bar
 from typing import List
 from decorators import log_function_call
+from validation import validate_operations  # Import the validation function
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +33,19 @@ class WinSCPAutomationApp:
         logger.info(f"Initial download path: {self.download_path}")
         logger.info(f"Initial master payload folder: {self.master_payload_folder}")
 
+        # Initialize BooleanVars for operations
         self.download_logs = BooleanVar()
         self.nvram_demo_reset = BooleanVar()
         self.nvram_reset = BooleanVar()
         self.compare_file_versions = BooleanVar()
         self.update_file_versions = BooleanVar()
+
+        # Add traces to enforce operation rules
+        self.download_logs.trace_add('write', self.on_operation_select)
+        self.nvram_demo_reset.trace_add('write', self.on_operation_select)
+        self.nvram_reset.trace_add('write', self.on_operation_select)
+        self.compare_file_versions.trace_add('write', self.on_operation_select)
+        self.update_file_versions.trace_add('write', self.on_operation_select)
 
         # Create the layout for better user experience
         self.create_layout()
@@ -61,11 +71,11 @@ class WinSCPAutomationApp:
         operations_frame = tk.Frame(self.root)
         operations_frame.pack(pady=10)
 
-        self.create_checkbox("Download Logs", self.download_logs, operations_frame)
-        self.create_checkbox("NVRAM Demo Reset", self.nvram_demo_reset, operations_frame)
-        self.create_checkbox("NVRAM Reset", self.nvram_reset, operations_frame)
         self.create_checkbox("Compare File Versions", self.compare_file_versions, operations_frame)
+        self.create_checkbox("Download Logs", self.download_logs, operations_frame)
         self.create_checkbox("Update File Versions", self.update_file_versions, operations_frame)
+        self.create_checkbox("NVRAM Reset", self.nvram_reset, operations_frame)
+        self.create_checkbox("NVRAM Demo Reset", self.nvram_demo_reset, operations_frame)
 
         # Folder selection section
         folder_frame = tk.Frame(self.root)
@@ -87,7 +97,7 @@ class WinSCPAutomationApp:
 
         # Run operations button
         self.run_operations_button = self.create_button("Run Operations", self.run_operations_clicked)
-    
+
     @log_function_call
     def show_progress_bar(self):
         """
@@ -226,34 +236,80 @@ class WinSCPAutomationApp:
             config.write(configfile)
 
     @log_function_call
-    def run_operations_clicked(self):
-        # Disable buttons during execution
-        self.run_operations_button.config(state=tk.DISABLED, text="Running...")
-        self.show_progress_bar()
-
-        # Run operations
-        selected_devices = self.get_selected_devices()
-        if not selected_devices:
-            messagebox.showwarning("No Devices Selected", "Please select at least one device.")
-            self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
-            self.hide_progress_bar()
-            return
-
-        if not any([self.download_logs.get(), self.nvram_demo_reset.get(), self.nvram_reset.get(), 
-                    self.compare_file_versions.get(), self.update_file_versions.get()]):
-            messagebox.showwarning("No Operations Selected", "Please select at least one operation.")
-            self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
-            self.hide_progress_bar()
-            return
-
-        # Call the callback function
-        self.operations_callback({
+    def on_operation_select(self, *args):
+        """
+        Enforce operation rules when checkboxes are toggled.
+        """
+        selected_operations = {
             "download_logs": self.download_logs.get(),
             "nvram_demo_reset": self.nvram_demo_reset.get(),
             "nvram_reset": self.nvram_reset.get(),
             "compare_file_versions": self.compare_file_versions.get(),
             "update_file_versions": self.update_file_versions.get()
-        }, self.download_path, self.master_payload_folder, selected_devices, self.on_operations_complete, self.root)
+        }
+        try:
+            # Validate operations to enforce rules
+            validate_operations(selected_operations)
+        except ValueError as e:
+            # Handle mutual exclusivity
+            if 'nvram_reset' in str(e) or 'nvram_demo_reset' in str(e):
+                # Undo the last change that caused the validation to fail
+                if self.nvram_reset.get() and self.nvram_demo_reset.get():
+                    # Determine which one to uncheck based on the error message
+                    if 'NVRAM Reset' in str(e):
+                        self.nvram_reset.set(False)
+                    else:
+                        self.nvram_demo_reset.set(False)
+            # Enforce dependencies
+            if 'requires' in str(e):
+                # If operation requires another, uncheck it
+                if self.download_logs.get() and not self.compare_file_versions.get():
+                    self.download_logs.set(False)
+                if self.update_file_versions.get() and not self.compare_file_versions.get():
+                    self.update_file_versions.set(False)
+            # Show error message
+            messagebox.showwarning("Invalid Selection", str(e))
+
+    @log_function_call
+    def run_operations_clicked(self):
+        # Run operations
+        selected_devices = self.get_selected_devices()
+        if not selected_devices:
+            messagebox.showwarning("No Devices Selected", "Please select at least one device.")
+            return
+
+        selected_operations = {
+            "download_logs": self.download_logs.get(),
+            "nvram_demo_reset": self.nvram_demo_reset.get(),
+            "nvram_reset": self.nvram_reset.get(),
+            "compare_file_versions": self.compare_file_versions.get(),
+            "update_file_versions": self.update_file_versions.get()
+        }
+
+        if not any(selected_operations.values()):
+            messagebox.showwarning("No Operations Selected", "Please select at least one operation.")
+            return
+
+        # Validate operations
+        try:
+            validate_operations(selected_operations)
+        except ValueError as e:
+            messagebox.showerror("Validation Error", str(e))
+            return
+
+        # Disable buttons during execution
+        self.run_operations_button.config(state=tk.DISABLED, text="Running...")
+        self.show_progress_bar()
+
+        # Call the callback function
+        self.operations_callback(
+            selected_operations,
+            self.download_path,
+            self.master_payload_folder,
+            selected_devices,
+            self.on_operations_complete,
+            self.root
+        )
 
     @log_function_call
     def on_operations_complete(self):
