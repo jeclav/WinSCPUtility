@@ -290,21 +290,26 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
 def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) -> None:
     """
-    Displays a message box showing devices with outdated .iso files.
+    Displays a message box showing devices with outdated .iso files,
+    or a message when all files are up to date.
 
     :param outdated_files_info: A dictionary with device names as keys and a list of outdated .iso files as values.
     :return: None
     """
+    from tkinter import messagebox
+
     if not outdated_files_info:
-        logger.info("All files are up-to-date.")
+        message = "All files are up-to-date."
+        logger.info(message)
+        messagebox.showinfo("Up-to-Date Files", message)
         return
 
-    from tkinter import messagebox
     message = "The following devices have outdated .iso files:\n\n"
     for device, files in outdated_files_info.items():
         message += f"{device}:\n" + "\n".join(files) + "\n\n"
-    
+
     messagebox.showinfo("Outdated ISO Files", message)
+
 
 def test_winscp_session():
     """
