@@ -224,12 +224,18 @@ def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
 def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
     """
     Performs a demo reset on the NVRAM by deleting all files except 'Demo.dat'.
+    If 'Demo.dat' does not exist on the device, it is pushed from the local './config/demo.dat'.
 
     :param nvram_path: Path to the NVRAM directory on the devices.
     :param selected_devices: List of device names chosen for the demo reset.
     :return: None
     """
     devices_to_process = get_devices_to_process(selected_devices)
+    local_demo_path = os.path.normpath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
+
+    if not os.path.exists(local_demo_path):
+        logger.error("Local 'Demo.dat' file not found at './config/demo.dat'.")
+        return
 
     for device in devices_to_process:
         session = create_session(device)
@@ -240,14 +246,23 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
             logger.info(f"Running demo NVRAM reset for device: {device['name']}")
             remote_files = session.ListDirectory(nvram_path).Files
 
+            # Delete all files except 'Demo.dat'
             for file in remote_files:
                 if file.Name != "Demo.dat":
                     session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
+
+            # Check if 'Demo.dat' exists on the device; if not, push it from the local path
+            if "Demo.dat" not in [file.Name for file in remote_files]:
+                logger.info(f"Pushing 'Demo.dat' to device {device['name']} at {nvram_path}")
+                session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
+                logger.info(f"'Demo.dat' successfully pushed to device {device['name']}")
+
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
         except Exception as e:
             logger.error(f"Error during demo reset for {device['name']}: {e}")
         finally:
             session.Dispose()
+
 
 def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) -> None:
     """
