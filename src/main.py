@@ -1,15 +1,23 @@
 # src/main.py
+
 import os
 import logging
 import tkinter as tk
 import threading
-from typing import List, Dict
+from typing import List, Dict, Callable
 from dotenv import load_dotenv
 from gui import WinSCPAutomationApp
-from operations import download_logs, compare_file_versions, update_file_versions, nvram_demo_reset, nvram_reset
+from operations import (
+    download_logs,
+    compare_file_versions,
+    update_file_versions,
+    nvram_demo_reset,
+    nvram_reset,
+)
 from logger_setup import setup_logger
 from decorators import log_function_call
 from tkinter import messagebox
+from validation import validate_operations, OPERATION_RULES
 
 # Ensure environment variables are loaded
 load_dotenv()
@@ -30,8 +38,8 @@ def run_operations(
     download_path: str,
     master_payload_folder: str,
     selected_devices: List[str],
-    on_complete: callable = None,
-    root: tk.Tk = None
+    on_complete: Callable = None,
+    root: tk.Tk = None,
 ) -> None:
     """
     Runs selected operations based on the user's choice in a separate thread.
@@ -46,31 +54,43 @@ def run_operations(
     """
     logger.info("Preparing to run selected operations")
 
+    # Validate the selected operations
+    try:
+        validate_operations(selected_operations)
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        if on_complete and root:
+            def show_error(e=e):
+                messagebox.showerror("Validation Error", str(e))
+                on_complete()
+            root.after(0, show_error)
+        return
+
     def execute_operations():
         logger.info("Running selected operations")
         nvram_path = os.getenv('NVRAM_PATH', '/mnt/nvram')
 
+        # Sort operations based on their defined order
+        selected_ops = [op for op, selected in selected_operations.items() if selected]
+        ordered_ops = sorted(selected_ops, key=lambda op: OPERATION_RULES[op]['order'])
+
         try:
-            if selected_operations.get('download_logs', False):
-                logger.info("Running download logs operation")
-                download_logs(selected_devices, download_path)
-
-            if selected_operations.get('nvram_demo_reset', False):
-                logger.info("Running NVRAM demo reset operation")
-                nvram_demo_reset(nvram_path, selected_devices)
-
-            if selected_operations.get('nvram_reset', False):
-                logger.info("Running NVRAM reset operation")
-                nvram_reset(nvram_path, selected_devices)
-
-            if selected_operations.get('compare_file_versions', False):
-                logger.info("Running compare file versions operation")
-                compare_file_versions(selected_devices, master_payload_folder)
-
-            if selected_operations.get('update_file_versions', False):
-                logger.info("Running update file versions operation")
-                update_file_versions(selected_devices, master_payload_folder)
-
+            for op in ordered_ops:
+                if op == 'compare_file_versions':
+                    logger.info("Running compare file versions operation")
+                    compare_file_versions(selected_devices, master_payload_folder)
+                elif op == 'download_logs':
+                    logger.info("Running download logs operation")
+                    download_logs(selected_devices, download_path)
+                elif op == 'update_file_versions':
+                    logger.info("Running update file versions operation")
+                    update_file_versions(selected_devices, master_payload_folder)
+                elif op == 'nvram_reset':
+                    logger.info("Running NVRAM reset operation")
+                    nvram_reset(nvram_path, selected_devices)
+                elif op == 'nvram_demo_reset':
+                    logger.info("Running NVRAM demo reset operation")
+                    nvram_demo_reset(nvram_path, selected_devices)
         except Exception as e:
             logger.error(f"Error during operations: {e}", exc_info=True)
             if on_complete and root:
