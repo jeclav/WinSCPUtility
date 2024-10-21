@@ -165,13 +165,26 @@ def compare_file_versions(selected_devices: List[str], master_payload_folder: st
 
     display_outdated_files_to_user(outdated_files_info)
 
+def remount_flash_as_rw(session: Session) -> None:
+    """
+    Remounts the /mnt/flash directory with read-write permissions using the specified session.
+
+    :param session: Active WinSCP session to execute the remount command.
+    """
+    try:
+        logger.info("Remounting /mnt/flash as read-write")
+        session.ExecuteCommand("mount /mnt/flash -o remount,rw")
+        logger.info("Successfully remounted /mnt/flash as read-write")
+    except Exception as e:
+        logger.error(f"Failed to remount /mnt/flash as read-write: {e}")
+        raise
+
 def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
     Updates .iso files on selected devices by deleting outdated files and uploading the latest versions.
 
     :param selected_devices: List of device names chosen for the update.
     :param master_payload_folder: Path to the local folder containing the latest .iso files.
-    :return: None
     """
     flash_path = '/mnt/flash'
     devices_to_process = get_devices_to_process(selected_devices)
@@ -186,6 +199,10 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
             continue
 
         try:
+            # Remount the flash path as read-write before making any changes
+            remount_flash_as_rw(session)
+
+            logger.info(f"Updating .iso files for device: {device['name']}")
             remote_files = session.ListDirectory(flash_path).Files
             device_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
             outdated_files = [file for file in device_files if file not in master_files]
