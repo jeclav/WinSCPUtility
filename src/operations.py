@@ -86,7 +86,7 @@ def load_devices(config_file: str) -> List[Dict[str, str]]:
 
 def download_logs(selected_devices: List[str], download_path: str) -> bool:
     """
-    Downloads logs from selected devices to a specified local folder.
+    Downloads logs from selected devices to a specified local folder, preserving the subfolder structure.
 
     :param selected_devices: List of device names chosen for log download.
     :param download_path: Path to the local directory where logs should be downloaded.
@@ -101,18 +101,23 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             continue
 
         try:
+            # Create a dedicated download folder for each device
             device_download_folder = os.path.join(download_path, device['name'])
-            if not os.path.isdir(device_download_folder):
-                os.makedirs(device_download_folder, exist_ok=True)
+            os.makedirs(device_download_folder, exist_ok=True)
 
             logger.info(f"Downloading logs for device: {device['name']} into {device_download_folder}")
+
+            # Configure transfer options to preserve subdirectory structure
             transfer_options = TransferOptions()
             transfer_options.TransferMode = TransferMode.Binary
+            transfer_options.PreserveDirectories = True
 
+            # Download logs from /tmp/logs/ with subfolder structure preserved
             result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder, False, transfer_options)
             result.Check()
 
-            result = session.GetFiles("/mnt/logs/*", device_download_folder, False, transfer_options)
+            # Download logs from /mnt/log with subfolder structure preserved
+            result = session.GetFiles("/mnt/log/*", device_download_folder, False, transfer_options)
             result.Check()
 
             logger.info(f"Successfully downloaded logs for {device['name']}")
