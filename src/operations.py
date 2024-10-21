@@ -104,6 +104,8 @@ def create_script(
             get logs
             cd /mnt
             get log
+            cd /Content/ggamf.awp_spain/MinimalGame
+            get Logs
             exit
             """
     elif operation_type == "nvram_reset":
@@ -121,8 +123,7 @@ def create_script(
             raise ValueError("remote_folder is required for NVRAM operations")
         script_content = f"""
             open sftp://{device['username']}:{device['password']}@{device['ip']}
-            # Delete all files except 'Demo.dat' in the remote folder
-            call find "{remote_folder}" -type f ! -name "Demo.dat" -exec rm {{}} \\;
+            rm "{remote_folder}" | "Demo.dat"
             exit
             """
     elif operation_type == "get_file_versions":
