@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 # Initialize .NET Interop with pythonnet
 winscp_dll_path = os.path.abspath("lib/WinSCP/WinSCPnet.dll")
 clr.AddReference(winscp_dll_path)
-from WinSCP import Session, SessionOptions, Protocol, TransferOptions, TransferOperationResult
+from WinSCP import Session, SessionOptions, Protocol, TransferOptions, TransferOperationResult, TransferMode
 
 logger = logging.getLogger(__name__)
 
