@@ -300,6 +300,33 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
             #     session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
             #     logger.info(f"'Demo.dat' successfully pushed to device {device['name']}")
 
+         # try:
+         #        # List all files in nvram_path and check if 'Demo.dat' is present
+         #        remote_directory = session.ListDirectory(nvram_path)
+         #        demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
+
+         #        # If 'Demo.dat' is not found, upload it from the project directory
+         #        if not demo_file_found:
+         #            logger.info(f"'Demo.dat' not found in {nvram_path}, uploading from {project_demo_file_path}...")
+         #            if os.path.exists(project_demo_file_path):
+         #                session.PutFiles(project_demo_file_path, f"{nvram_path}/Demo.dat").Check()
+         #                logger.info(f"'Demo.dat' successfully uploaded to {nvram_path}")
+         #            else:
+         #                logger.error(f"Local 'Demo.dat' not found at {project_demo_file_path}")
+         #                return  # Exit if Demo.dat is not found locally
+        
+         #        # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
+         #        files_to_delete = [file for file in remote_directory.Files if file.Name != "Demo.dat" and file.Name != "." and file.Name != ".."]
+
+         #        # Delete each file except for 'Demo.dat'
+         #        for file in files_to_delete:
+         #            session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
+
+         #        logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
+
+         #    except Exception as e:
+         #        logger.error(f"Error managing NVRAM files: {e}")
+
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
         except Exception as e:
             logger.error(f"Error during demo reset for {device['name']}: {e}")
