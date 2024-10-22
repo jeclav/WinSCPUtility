@@ -9,12 +9,12 @@ OPERATION_RULES = {
     'download_logs': {
         'order': 2,
         'excludes': [],
-        'requires': ['compare_file_versions'],
+        'requires': [],
     },
     'update_file_versions': {
         'order': 3,
         'excludes': [],
-        'requires': ['compare_file_versions'],
+        'requires': [],
     },
     'nvram_reset': {
         'order': 4,
