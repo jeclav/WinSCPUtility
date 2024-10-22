@@ -224,6 +224,20 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
             logger.error(f"Error updating files for {device['name']}: {e}")
         finally:
             session.Dispose()
+            
+def reboot(session: Session) -> None:
+    """
+    Reboots the device using the specified session.
+
+    :param session: Active WinSCP session to execute the remount command.
+    """
+    try:
+        logger.info("Initiating reboot")
+        session.ExecuteCommand("reboot")
+        logger.info("Successfully initiated reboot")
+    except Exception as e:
+        logger.error(f"Failed to initiate reboot: {e}")
+        raise
 
 def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
     """
@@ -244,6 +258,7 @@ def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
             logger.info(f"Resetting NVRAM for device: {device['name']} at {nvram_path}")
             session.RemoveFiles(f"{nvram_path}/*").Check()
             logger.info(f"Successfully reset NVRAM for {device['name']}")
+            reboot(session)
         except Exception as e:
             logger.error(f"Error resetting NVRAM for {device['name']}: {e}")
         finally:
@@ -280,10 +295,10 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
                     session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
 
             # Check if 'Demo.dat' exists on the device; if not, push it from the local path
-            if "Demo.dat" not in [file.Name for file in remote_files]:
-                logger.info(f"Pushing 'Demo.dat' to device {device['name']} at {nvram_path}")
-                session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
-                logger.info(f"'Demo.dat' successfully pushed to device {device['name']}")
+            # if "Demo.dat" not in [file.Name for file in remote_files]:
+            #     logger.info(f"Pushing 'Demo.dat' to device {device['name']} at {nvram_path}")
+            #     session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
+            #     logger.info(f"'Demo.dat' successfully pushed to device {device['name']}")
 
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
         except Exception as e:
