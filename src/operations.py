@@ -183,6 +183,20 @@ def remount_flash_as_rw(session: Session) -> None:
     except Exception as e:
         logger.error(f"Failed to remount /mnt/flash as read-write: {e}")
         raise
+    
+def remount_nvram_as_rw(session: Session) -> None:
+    """
+    Remounts the /mnt/flash directory with read-write permissions using the specified session.
+
+    :param session: Active WinSCP session to execute the remount command.
+    """
+    try:
+        logger.info("Remounting /mnt/nvram as read-write")
+        session.ExecuteCommand("mount /mnt/nvram -o remount,rw")
+        logger.info("Successfully remounted /mnt/nvram as read-write")
+    except Exception as e:
+        logger.error(f"Failed to remount /mnt/nvram as read-write: {e}")
+        raise
 
 def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
@@ -274,11 +288,8 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
     :return: None
     """
     devices_to_process = get_devices_to_process(selected_devices)
-    local_demo_path = os.path.normpath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
-
-    if not os.path.exists(local_demo_path):
-        logger.error("Local 'Demo.dat' file not found at './config/demo.dat'.")
-        return
+    local_demo_path = os.path.abspath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
+    logger.info(f"'Local Demo.dat' found in {local_demo_path}")
 
     for device in devices_to_process:
         session = create_session(device)
@@ -287,45 +298,36 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
         try:
             logger.info(f"Running demo NVRAM reset for device: {device['name']}")
-            remote_files = session.ListDirectory(nvram_path).Files
+            
+            # List all files in nvram_path and check if 'Demo.dat' is present
+            remote_directory = session.ListDirectory(nvram_path)
+            demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
 
-            # Delete all files except 'Demo.dat'
-            for file in remote_files:
-                if file.Name != "Demo.dat":
+
+            if demo_file_found:
+                # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
+                logger.info(f"'Demo.dat' not found in {nvram_path}")
+                files_to_delete = [file for file in remote_directory.Files if file.Name != "Demo.dat" and file.Name != "." and file.Name != ".."]
+
+                # Delete each file except for 'Demo.dat'
+                for file in files_to_delete:
+                    logger.info(f"'Removing: {nvram_path}/{file.Name}")
                     session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
-
-            # Check if 'Demo.dat' exists on the device; if not, push it from the local path
-            # if "Demo.dat" not in [file.Name for file in remote_files]:
-            #     logger.info(f"Pushing 'Demo.dat' to device {device['name']} at {nvram_path}")
-            #     session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
-            #     logger.info(f"'Demo.dat' successfully pushed to device {device['name']}")
-
-         # try:
-         #        # List all files in nvram_path and check if 'Demo.dat' is present
-         #        remote_directory = session.ListDirectory(nvram_path)
-         #        demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
-
-         #        # If 'Demo.dat' is not found, upload it from the project directory
-         #        if not demo_file_found:
-         #            logger.info(f"'Demo.dat' not found in {nvram_path}, uploading from {project_demo_file_path}...")
-         #            if os.path.exists(project_demo_file_path):
-         #                session.PutFiles(project_demo_file_path, f"{nvram_path}/Demo.dat").Check()
-         #                logger.info(f"'Demo.dat' successfully uploaded to {nvram_path}")
-         #            else:
-         #                logger.error(f"Local 'Demo.dat' not found at {project_demo_file_path}")
-         #                return  # Exit if Demo.dat is not found locally
-        
-         #        # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
-         #        files_to_delete = [file for file in remote_directory.Files if file.Name != "Demo.dat" and file.Name != "." and file.Name != ".."]
-
-         #        # Delete each file except for 'Demo.dat'
-         #        for file in files_to_delete:
-         #            session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
-
-         #        logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
-
-         #    except Exception as e:
-         #        logger.error(f"Error managing NVRAM files: {e}")
+                    
+                logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
+                reboot(session)
+            
+            else:
+                logger.info(f"'Demo.dat' not found in {nvram_path}, uploading from {local_demo_path}...")
+                
+                if os.path.exists(local_demo_path):
+                    remount_nvram_as_rw(session)
+                    session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
+                    logger.info(f"'Demo.dat' successfully uploaded to {nvram_path}")
+                    reboot(session)
+                else:
+                    logger.error(f"Local 'Demo.dat' not found at {local_demo_path}")
+                    return
 
             logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
         except Exception as e:
