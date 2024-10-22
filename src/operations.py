@@ -30,7 +30,7 @@ def create_session(device: Dict[str, str]) -> Optional[Session]:
         session_options.UserName = device['username']
         session_options.Password = device['password']
         session_options.GiveUpSecurityAndAcceptAnySshHostKey = True
-
+       
         logger.info(f"Opening WinSCP session for {device['name']}...")
         session.Open(session_options)
         return session
@@ -112,14 +112,18 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             transfer_options = TransferOptions()
             transfer_options.TransferMode = TransferMode.Binary
             transfer_options.PreserveDirectories = True
+            transfer_options.SpeedLimit = 0
+
 
             # Download logs from /tmp/logs/ with subfolder structure preserved
-            result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder, False, transfer_options)
+            result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder + "\\*", False, transfer_options)
             result.Check()
 
-            # Download logs from /mnt/log/ with subfolder structure preserved
-            result = session.GetFiles("/mnt/log/*", device_download_folder, False, transfer_options)
+            # Download logs from /mnt/log/ with subfolder structure preserved        
+            result: TransferOperationResult = session.GetFiles("/mnt/log/*", device_download_folder + "\\*", False, transfer_options)
             result.Check()
+            
+
 
             logger.info(f"Successfully downloaded logs for {device['name']}")
         except Exception as e:
