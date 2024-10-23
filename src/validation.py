@@ -1,4 +1,4 @@
-# src/validation.py
+# validation.py
 
 OPERATION_RULES = {
     'compare_file_versions': {

@@ -84,7 +84,6 @@ def run_operations(
                         proceed_event.set()
                     else:
                         # User chose to abort
-                        logger.info(f"Operation '{operation_name}' was aborted by the user.")
                         if on_complete:
                             on_complete()
                         proceed_event.set()
@@ -116,7 +115,6 @@ def run_operations(
                     nvram_demo_reset(nvram_path, selected_devices)
 
             # All operations completed
-            logger.info("All selected operations have completed successfully.")
             if on_complete and root:
                 root.after(0, on_complete)
 
