@@ -38,6 +38,16 @@ def create_session(device: Dict[str, str]) -> Optional[Session]:
         logger.error(f"Failed to create session for {device['name']} - {e}")
         return None
 
+def get_transfer_options() -> TransferOptions:
+    """
+    Creates and returns a TransferOptions object with predefined settings.
+    """
+    transfer_options = TransferOptions()
+    transfer_options.TransferMode = TransferMode.Binary
+    transfer_options.PreserveDirectories = True
+    transfer_options.SpeedLimit = 0
+    return transfer_options
+
 def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
     """
     Filters the devices based on the selected device names.
@@ -108,11 +118,8 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
 
             logger.info(f"Downloading logs for device: {device['name']} into {device_download_folder}")
 
-            # Configure transfer options to preserve subdirectory structure
-            transfer_options = TransferOptions()
-            transfer_options.TransferMode = TransferMode.Binary
-            transfer_options.PreserveDirectories = True
-            transfer_options.SpeedLimit = 0
+            # Get the predefined transfer options
+            transfer_options = get_transfer_options()
 
             # Download logs from /tmp/logs/ with subfolder structure preserved
             result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder + "\\*", False, transfer_options)
@@ -124,7 +131,7 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
                 
             logger.info(f"Successfully downloaded logs for {device['name']}")
 
-            # Call log_file_versions to get the list of .iso files and write to "PAYLOAD" in device_download_folder
+            # Call log_file_versions to get the list of .iso files and write to "PAYLOAD.txt" in device_download_folder
             log_file_versions(session, device_download_folder)
 
         except Exception as e:
@@ -237,6 +244,9 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
         for file in os.listdir(master_payload_folder) if file.endswith('.iso') or file.endswith('.sig')
     }
 
+    # Get the predefined transfer options
+    transfer_options = get_transfer_options()
+
     for device in devices_to_process:
         session = create_session(device)
         if not session:
@@ -263,7 +273,7 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
 
                 logger.info(f"Uploading latest files for {device['name']}")
                 for file, path in master_files.items():
-                    session.PutFiles(path, f"{flash_path}/{file}").Check()
+                    session.PutFiles(path, f"{flash_path}/{file}", False, transfer_options).Check()
             else:
                 logger.info(f"No outdated or missing files for device {device['name']}")
 
