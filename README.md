@@ -1,87 +1,78 @@
 ﻿# WinSCP Automation Tool
 
-The **WinSCP Automation Tool** is a Python-based application designed to automate file transfer tasks with WinSCP using a simple graphical user interface (GUI). The tool allows users to manage device operations such as downloading logs and performing specific tasks like DemoNvramReset and NvramReset. It supports multiple devices through a configuration file (`devices.ini`) and allows the user to define download paths that persist between sessions.
+## Overview
+The **WinSCP Automation Tool** is a Python-based application for **SGF platform** that automates file transfers and other operations on network devices using WinSCP. It features a graphical user interface (GUI) built with Tkinter, allowing users to select devices and perform operations such as downloading logs, comparing file versions, updating firmware, and managing NVRAM.
 
 ## Features
-- **Device Management**: Define devices in `devices.ini` for quick access.
-- **File Operations**: Automate downloading logs and performing custom operations like `DemoNvramReset` and `NvramReset`.
-- **GUI Controls**: Checkboxes allow you to select operations to execute.
-- **Folder Selection**: Choose a folder for downloading files, with the path saved for future sessions.
-- **Logging**: Detailed logs of actions and errors for troubleshooting.
+- **Device Management**: Load device configurations from an INI file and interact with any configuration of selected devices.
+- **File Operations**: Compare file versions, download logs, update file versions, on selected devices sequentially using WinSCP.
+- **NVRAM Operations**: Perform regular or demo reset operations on NVRAM for selected devices.
+- **Chain Operations**: Operations are que'd to run sequentially (with validation) for greater automation. 
+
 
 ## Project Structure
-WinSCPAutomation/
-├── config/
-│   └── devices.ini           # Configuration file for device information
-├── logs/
-│   └── activity.log          # Log file generated during execution
-├── scripts/                  # (Optional) Directory for generated WinSCP script files
-├── src/
-│   ├── main.py               # Main entry point of the application
-│   ├── gui.py                # GUI logic with Tkinter
-│   └── utils.py              # (Optional) Helper functions for file and operation handling
-├── user_settings.ini         # User settings, stores persistent values like download paths
-└── README.md                 # Documentation for the project
+### `main.py`
+The main entry point of the application, responsible for:
+- Setting up the logger and environment variables.
+- Initializing the GUI.
+- Handling the execution of operations based on user input.
 
-## Installation and Setup
+### `gui.py`
+This file defines the Tkinter-based GUI:
+- **Device Selection**: Allows users to select devices to operate on.
+- **Operation Selection**: Users choose which operations (e.g., download logs, reset NVRAM) to perform.
+- **Folder Selection**: Users can specify folders for downloads and master payloads.
+
+### `operations.py`
+Implements the core operations on devices, including:
+- **Session Management**: Managing WinSCP sessions for communication with devices.
+- **File Transfers**: Using WinSCP to download and update files on devices.
+- **NVRAM Operations**: Reset or demo reset NVRAM.
+
+### `validation.py`
+Implements rules for operation selection validation:
+- Ensures mutually exclusive operations are not selected together.
+- Validates that dependent operations are selected if required.
+
+## Installation
 
 ### Prerequisites
-- Python 3.6+
-- WinSCP installed and added to the system PATH
-- Required Python packages: `tkinter`, `configparser`, `logging`, and `PyInstaller` (for creating an executable)
+- Python 3.8+
+- Tkinter (`pip install tk`)
+- pythonnet (`pip install pythonnet`)
+- python-dotenv (`pip install python-dotenv`)
+- WinSCP .NET assembly (`WinSCPnet.dll`)
 
-### Step 1: Install Dependencies
-Install the necessary Python packages:
-pip install pyinstaller
-Note: tkinter is a built-in Python library and doesn't need separate installation.
+## Configuration
+Device Configuration
 
-### Step 2: Configuration
-Configure your devices: Create the devices.ini file inside the config/ directory with the following format:
+Device connection details are loaded from an INI file (CONFIG_FILE). 
 
+Each device should have a section in the following format:
 
-#### devices.ini
-[G920-1]
-ip = 192.168.0.10
-username = admin
-password = pass123
-
-[G920-2]
-ip = 192.168.0.11
-username = user1
-password = pass456
-Initial Setup: Ensure the user_settings.ini file exists in the project root to store your download path.
-
-## Usage
-Running the Application
-Start the application by running main.py:
-python src/main.py
-
-
-Creating an Executable
-To create a standalone executable, use PyInstaller:
-
-
-pyinstaller --onefile --noconsole --add-data "src/config/devices.ini;config" --add-data "src/user_settings.ini;." src/main.py
-The executable will be generated in the dist/ folder.
-
-Log Files
-All application logs are saved in logs/activity.log.
-Logs provide detailed information about the application's actions, errors, and user interactions.
-Troubleshooting
-Cannot find devices.ini: Ensure that the devices.ini file is located in the config/ directory.
-WinSCP not recognized: Make sure winscp.com is installed and added to the system PATH.
-Contributing
-If you'd like to contribute, feel free to submit pull requests or report issues.
-
-## License
-This project is licensed under the MIT License.
-
-
-## Notes:
-- **Commands**: Use the PyInstaller command exactly as shown to ensure the necessary files are included when creating an executable.
-- **Device Configuration**: Ensure `devices.ini` follows the expected format for smooth operation.
-- **Logging**: Logs are crucial for understanding the application’s execution flow, especially when troubleshooting.
+```
+[Device1]
+ip=192.168.1.10
+username=root
+password=admin
+```
 
 
 
 
+Activate your virtual environment (if you're using one) to ensure the correct environment is being used. For example, if using venv, run:
+
+bash
+Copy code
+source venv/bin/activate  # On Linux/macOS
+venv\Scripts\activate     # On Windows
+Install all the required libraries for your project, if you haven’t already. For example:
+
+bash
+Copy code
+pip install pythonnet python-dotenv tk
+Generate requirements.txt using pip by running:
+
+bash
+Copy code
+pip freeze > requirements.txt
