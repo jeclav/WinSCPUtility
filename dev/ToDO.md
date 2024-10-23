@@ -1,16 +1,11 @@
 # To DO
 
 # Functionality
-	- Add Get File Versions function
-		- Request file versions when downloading logs, output to same directory
-	
 	- Create executable
 		- Dependency structure
 		- Fix virtual environment config
 		- requirements.txt
 		- refine readme
-		
-	- Add .sig files to update files for platform update
 	
 	- Publish logs message to Teams?
 	
@@ -26,10 +21,6 @@
 		
 		
 # Optimisations
-	- Update Files
-		- First check if an outdated file exists
-		- Then call remount only if true
-	
 	- Session generation
 		- Preserve session in pipeline?
 		- Pass TransferOptions config globally
