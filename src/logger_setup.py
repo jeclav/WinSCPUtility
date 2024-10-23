@@ -5,7 +5,7 @@ import os
 # ANSI escape codes for colored output
 RESET = "\x1b[0m"
 COLORS = {
-    'DEBUG': "\x1b[34m",    # Blue
+    'DEBUG': "\x1b[1;34m",    # Blue
     'INFO': "\x1b[32m",     # Green
     'WARNING': "\x1b[33m",  # Yellow
     'ERROR': "\x1b[31m",    # Red
@@ -39,3 +39,5 @@ def setup_logger(log_file=None, log_level=logging.DEBUG):
             file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  # No color in file
             file_handler.setFormatter(file_formatter)
             logger.addHandler(file_handler)
+
+            

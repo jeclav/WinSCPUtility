@@ -289,7 +289,6 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
     """
     devices_to_process = get_devices_to_process(selected_devices)
     local_demo_path = os.path.abspath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
-    logger.info(f"'Local Demo.dat' found in {local_demo_path}")
 
     for device in devices_to_process:
         session = create_session(device)
@@ -306,12 +305,12 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
             if demo_file_found:
                 # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
-                logger.info(f"'Demo.dat' not found in {nvram_path}")
+                logger.info(f"'Demo.dat' found in {nvram_path}")
                 files_to_delete = [file for file in remote_directory.Files if file.Name != "Demo.dat" and file.Name != "." and file.Name != ".."]
 
                 # Delete each file except for 'Demo.dat'
                 for file in files_to_delete:
-                    logger.info(f"'Removing: {nvram_path}/{file.Name}")
+                    logger.debug(f"'Removing: {nvram_path}/{file.Name}")
                     session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
                     
                 logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
