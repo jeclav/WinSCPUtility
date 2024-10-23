@@ -169,7 +169,7 @@ def download_logs(selected_devices: List[str], base_download_path: str, custom_n
 
 def log_file_versions(session: Session, device_download_folder: str, device_name: str) -> None:
     """
-    Retrieves a sorted list of all .iso and .sig files in the device and writes it to a .txt file named "PAYLOAD.txt" in the device_download_folder.
+    Retrieves a list of all .iso files in the device and writes it to a .txt file named "PAYLOAD.txt" in the device_download_folder.
 
     :param session: Active WinSCP session for the device.
     :param device_download_folder: Path to the local directory where the "PAYLOAD.txt" file should be saved.
@@ -181,15 +181,12 @@ def log_file_versions(session: Session, device_download_folder: str, device_name
 
     try:
         remote_files = session.ListDirectory(flash_path).Files
-        # Include both .iso and .sig files
-        iso_sig_files = [file.Name for file in remote_files if file.Name.endswith('.iso') or file.Name.endswith('.sig')]
-        # Sort the file names alphabetically
-        iso_sig_files.sort()
+        iso_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
 
-        # Write the sorted list to a file named "PAYLOAD.txt" in device_download_folder
+        # Write the list to a file named "PAYLOAD.txt" in device_download_folder
         payload_file_path = os.path.join(device_download_folder, "PAYLOAD.txt")
         with open(payload_file_path, 'w') as payload_file:
-            for file_name in iso_sig_files:
+            for file_name in iso_files:
                 payload_file.write(file_name + '\n')
 
         device_logger.debug(f"PAYLOAD.txt file written to {payload_file_path}")
