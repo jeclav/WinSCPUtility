@@ -1,64 +1,32 @@
 # src/operations.py
+
 import clr
 import os
 import logging
 from typing import List, Dict, Optional
-from datetime import datetime
+from contextlib import contextmanager
 
 # Initialize .NET Interop with pythonnet
 winscp_dll_path = os.path.abspath("lib/WinSCP/WinSCPnet.dll")
 clr.AddReference(winscp_dll_path)
-from WinSCP import Session, SessionOptions, Protocol, TransferOptions, TransferOperationResult, TransferMode
+from WinSCP import (
+    Session,
+    SessionOptions,
+    Protocol,
+    TransferOptions,
+    TransferOperationResult,
+    TransferMode,
+    SessionRemoteException,
+)
+
+from utils import (
+    get_transfer_options,
+    sanitize_folder_name,
+    create_parent_archive_folder,
+    create_device_archive_folder,
+)
 
 logger = logging.getLogger(__name__)
-
-def create_session(device: Dict[str, str]) -> Optional[Session]:
-    """
-    Creates and opens a WinSCP session using the provided device credentials.
-
-    :param device: A dictionary containing device connection information with keys:
-        - 'name': Name of the device.
-        - 'ip': IP address of the device.
-        - 'username': Username for authentication.
-        - 'password': Password for authentication.
-    :return: An active WinSCP session if successful, or None if the session creation fails.
-    """
-    try:
-        session = Session()
-        session_options = SessionOptions()
-        session_options.Protocol = Protocol.Sftp
-        session_options.HostName = device['ip']
-        session_options.UserName = device['username']
-        session_options.Password = device['password']
-        session_options.GiveUpSecurityAndAcceptAnySshHostKey = True
-       
-        logger.info(f"Opening WinSCP session for {device['name']}...")
-        session.Open(session_options)
-        return session
-    except Exception as e:
-        logger.error(f"Failed to create session for {device['name']} - {e}")
-        return None
-
-def get_transfer_options() -> TransferOptions:
-    """
-    Creates and returns a TransferOptions object with predefined settings.
-    """
-    transfer_options = TransferOptions()
-    transfer_options.TransferMode = TransferMode.Binary
-    transfer_options.PreserveDirectories = True
-    transfer_options.SpeedLimit = 0
-    return transfer_options
-
-def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
-    """
-    Filters the devices based on the selected device names.
-
-    :param selected_devices: List of device names chosen for processing.
-    :return: A list of device dictionaries containing connection information for each selected device.
-    """
-    config_file = os.path.normpath(os.getenv('CONFIG_FILE', 'devices.ini'))
-    devices = load_devices(config_file)
-    return [device for device in devices if device['name'] in selected_devices]
 
 def load_devices(config_file: str) -> List[Dict[str, str]]:
     """
@@ -96,17 +64,47 @@ def load_devices(config_file: str) -> List[Dict[str, str]]:
 
     return devices
 
-def sanitize_folder_name(name: str) -> str:
+def get_devices_to_process(selected_devices: List[str]) -> List[Dict[str, str]]:
     """
-    Sanitizes a folder name by removing or replacing invalid characters.
+    Filters the devices based on the selected device names.
 
-    :param name: The original folder name.
-    :return: A sanitized folder name safe for use in file systems.
+    :param selected_devices: List of device names chosen for processing.
+    :return: A list of device dictionaries containing connection information for each selected device.
     """
-    import re
-    invalid_chars = r'[<>:"/\\|?*]'
-    sanitized_name = re.sub(invalid_chars, '_', name)
-    return sanitized_name
+    config_file = os.path.normpath(os.getenv('CONFIG_FILE', 'devices.ini'))
+    devices = load_devices(config_file)
+    return [device for device in devices if device['name'] in selected_devices]
+
+@contextmanager
+def device_session(device: Dict[str, str]) -> Optional[Session]:
+    """
+    Context manager for creating and disposing of a WinSCP session.
+
+    :param device: Device information dictionary.
+    :yield: An active WinSCP session if successful, or None if the session creation fails.
+    """
+    device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+    session = None
+    try:
+        session = Session()
+        session_options = SessionOptions()
+        session_options.Protocol = Protocol.Sftp
+        session_options.HostName = device['ip']
+        session_options.UserName = device['username']
+        session_options.Password = device['password']
+        session_options.GiveUpSecurityAndAcceptAnySshHostKey = True
+
+        device_logger.info("Opening WinSCP session")
+        session.Open(session_options)
+        device_logger.debug("Session opened successfully")
+        yield session
+    except Exception as e:
+        device_logger.error(f"Failed to create session: {e}", exc_info=True)
+        yield None
+    finally:
+        if session:
+            session.Dispose()
+            device_logger.debug("Session disposed")
 
 def download_logs(selected_devices: List[str], base_download_path: str, custom_name: Optional[str] = None) -> bool:
     """
@@ -118,70 +116,67 @@ def download_logs(selected_devices: List[str], base_download_path: str, custom_n
     :param custom_name: Optional custom name to include in the parent folder name.
     :return: True if logs are successfully downloaded from all devices, False if errors occur for any device.
     """
-    # Get the current date and time
-    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    logger.info("Starting log download operation")
 
-    # Construct the parent folder name
-    if custom_name:
-        parent_folder_name = f"{current_datetime}-{custom_name}"
-    else:
-        parent_folder_name = current_datetime
-
-    # Ensure the parent folder name is valid
-    parent_folder_name = sanitize_folder_name(parent_folder_name)
-
-    # Create the parent folder
-    parent_folder_path = os.path.join(base_download_path, parent_folder_name)
-    os.makedirs(parent_folder_path, exist_ok=True)
-    logger.info(f"Created parent folder: {parent_folder_path}")
+    # Create the parent archive folder using utils.py utility
+    parent_folder_path = create_parent_archive_folder(base_download_path, custom_name)
+    logger.debug(f"Created parent folder: {parent_folder_path}")
 
     devices_to_process = get_devices_to_process(selected_devices)
     success = True
 
     for device in devices_to_process:
-        session = create_session(device)
-        if not session:
-            continue
+        device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+        with device_session(device) as session:
+            if not session:
+                device_logger.error("Session could not be established. Skipping device.")
+                success = False
+                continue
 
-        try:
-            # Create a dedicated download folder for each device inside the parent folder
-            device_download_folder = os.path.join(parent_folder_path, device['name'])
-            os.makedirs(device_download_folder, exist_ok=True)
+            try:
+                # Create the device-specific archive folder
+                device_download_folder = create_device_archive_folder(parent_folder_path, device['name'])
 
-            logger.info(f"Downloading logs for device: {device['name']} into {device_download_folder}")
+                device_logger.info(f"Downloading logs into {device_download_folder}")
 
-            # Get the predefined transfer options
-            transfer_options = get_transfer_options()
+                # Get the predefined transfer options
+                transfer_options = get_transfer_options()
 
-            # Download logs from /tmp/logs/ with subfolder structure preserved
-            result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder + "\\*", False, transfer_options)
-            result.Check()
+                # Download logs from /tmp/logs/ with subfolder structure preserved
+                result: TransferOperationResult = session.GetFiles(
+                    "/tmp/logs/*", device_download_folder + "\\*", False, transfer_options)
+                result.Check()
 
-            # Download logs from /mnt/log/ with subfolder structure preserved        
-            result: TransferOperationResult = session.GetFiles("/mnt/log/*", device_download_folder + "\\*", False, transfer_options)
-            result.Check()
-                
-            logger.info(f"Successfully downloaded logs for {device['name']}")
+                # Download logs from /mnt/log/ with subfolder structure preserved
+                result = session.GetFiles(
+                    "/mnt/log/*", device_download_folder + "\\*", False, transfer_options)
+                result.Check()
 
-            # Call log_file_versions to get the list of .iso files and write to "PAYLOAD.txt" in device_download_folder
-            log_file_versions(session, device_download_folder)
+                device_logger.info("Logs downloaded successfully")
 
-        except Exception as e:
-            success = False
-            logger.error(f"Error downloading logs for {device['name']}: {e}")
-        finally:
-            session.Dispose()
+                # Call log_file_versions to get the list of .iso and .sig files and write to "PAYLOAD.txt"
+                log_file_versions(session, device_download_folder, device['name'])
 
+            except SessionRemoteException as e:
+                success = False
+                device_logger.error(f"Error during log download: {e}", exc_info=True)
+            except Exception as e:
+                success = False
+                device_logger.error(f"Unexpected error: {e}", exc_info=True)
+
+    logger.info("Completed log download operation")
     return success
 
-def log_file_versions(session: Session, device_download_folder: str) -> None:
+def log_file_versions(session: Session, device_download_folder: str, device_name: str) -> None:
     """
     Retrieves a sorted list of all .iso and .sig files in the device and writes it to a .txt file named "PAYLOAD.txt" in the device_download_folder.
 
     :param session: Active WinSCP session for the device.
     :param device_download_folder: Path to the local directory where the "PAYLOAD.txt" file should be saved.
+    :param device_name: Name of the device.
     :return: None
     """
+    device_logger = logging.LoggerAdapter(logger, {'device': device_name})
     flash_path = '/mnt/flash'
 
     try:
@@ -197,9 +192,9 @@ def log_file_versions(session: Session, device_download_folder: str) -> None:
             for file_name in iso_sig_files:
                 payload_file.write(file_name + '\n')
 
-        logger.info(f"PAYLOAD.txt file written to {payload_file_path}")
+        device_logger.debug(f"PAYLOAD.txt file written to {payload_file_path}")
     except Exception as e:
-        logger.error(f"Error getting files for device: {e}")
+        device_logger.error(f"Error retrieving file versions: {e}", exc_info=True)
 
 def compare_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
@@ -209,6 +204,7 @@ def compare_file_versions(selected_devices: List[str], master_payload_folder: st
     :param master_payload_folder: Path to the local folder containing the latest .iso files.
     :return: None
     """
+    logger.info("Starting file version comparison")
     flash_path = '/mnt/flash'
     devices_to_process = get_devices_to_process(selected_devices)
     outdated_files_info = {}
@@ -219,197 +215,27 @@ def compare_file_versions(selected_devices: List[str], master_payload_folder: st
     }
 
     for device in devices_to_process:
-        session = create_session(device)
-        if not session:
-            continue
+        device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+        with device_session(device) as session:
+            if not session:
+                device_logger.error("Session could not be established. Skipping device.")
+                continue
 
-        try:
-            remote_files = session.ListDirectory(flash_path).Files
-            device_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
+            try:
+                remote_files = session.ListDirectory(flash_path).Files
+                device_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
 
-            outdated_files = [file for file in device_files if file not in master_files]
-            if outdated_files:
-                outdated_files_info[device['name']] = outdated_files
-        except Exception as e:
-            logger.error(f"Error comparing files for {device['name']}: {e}")
-        finally:
-            session.Dispose()
+                outdated_files = [file for file in device_files if file not in master_files]
+                if outdated_files:
+                    outdated_files_info[device['name']] = outdated_files
+                    device_logger.warning(f"Outdated files found: {outdated_files}")
+                else:
+                    device_logger.info("All files are up-to-date")
+            except Exception as e:
+                device_logger.error(f"Error comparing files: {e}", exc_info=True)
 
     display_outdated_files_to_user(outdated_files_info, master_files)
-
-def remount_flash_as_rw(session: Session) -> None:
-    """
-    Remounts the /mnt/flash directory with read-write permissions using the specified session.
-
-    :param session: Active WinSCP session to execute the remount command.
-    """
-    try:
-        logger.info("Remounting /mnt/flash as read-write")
-        session.ExecuteCommand("mount /mnt/flash -o remount,rw")
-        logger.info("Successfully remounted /mnt/flash as read-write")
-    except Exception as e:
-        logger.error(f"Failed to remount /mnt/flash as read-write: {e}")
-        raise
-    
-def remount_nvram_as_rw(session: Session) -> None:
-    """
-    Remounts the /mnt/nvram directory with read-write permissions using the specified session.
-
-    :param session: Active WinSCP session to execute the remount command.
-    """
-    try:
-        logger.info("Remounting /mnt/nvram as read-write")
-        session.ExecuteCommand("mount /mnt/nvram -o remount,rw")
-        logger.info("Successfully remounted /mnt/nvram as read-write")
-    except Exception as e:
-        logger.error(f"Failed to remount /mnt/nvram as read-write: {e}")
-        raise
-
-def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
-    """
-    Updates .iso and .sig files on selected devices by deleting outdated files and uploading the latest versions.
-
-    :param selected_devices: List of device names chosen for the update.
-    :param master_payload_folder: Path to the local folder containing the latest .iso and .sig files.
-    """
-    flash_path = '/mnt/flash'
-    devices_to_process = get_devices_to_process(selected_devices)
-    master_files = {
-        file: os.path.join(master_payload_folder, file)
-        for file in os.listdir(master_payload_folder) if file.endswith('.iso') or file.endswith('.sig')
-    }
-
-    # Get the predefined transfer options
-    transfer_options = get_transfer_options()
-
-    for device in devices_to_process:
-        session = create_session(device)
-        if not session:
-            continue
-
-        try:
-            logger.info(f"Updating .iso and .sig files for device: {device['name']}")
-            remote_files = session.ListDirectory(flash_path).Files
-            device_files = [file.Name for file in remote_files if file.Name.endswith('.iso') or file.Name.endswith('.sig')]
-
-            outdated_files = [file for file in device_files if file not in master_files]
-
-            # Determine if there are files to upload (missing on device)
-            missing_files = [file for file in master_files if file not in device_files]
-
-            if outdated_files or missing_files:
-                # Remount the flash path as read-write before making any changes
-                remount_flash_as_rw(session)
-
-                if outdated_files:
-                    logger.info(f"Deleting outdated files: {outdated_files}")
-                    for file in outdated_files:
-                        session.RemoveFiles(f"{flash_path}/{file}").Check()
-
-                logger.info(f"Uploading latest files for {device['name']}")
-                for file, path in master_files.items():
-                    session.PutFiles(path, f"{flash_path}/{file}", False, transfer_options).Check()
-            else:
-                logger.info(f"No outdated or missing files for device {device['name']}")
-
-        except Exception as e:
-            logger.error(f"Error updating files for {device['name']}: {e}")
-        finally:
-            session.Dispose()
-            
-def reboot(session: Session) -> None:
-    """
-    Reboots the device using the specified session.
-
-    :param session: Active WinSCP session to execute the reboot command.
-    """
-    try:
-        logger.info("Initiating reboot")
-        session.ExecuteCommand("reboot")
-        logger.info("Successfully initiated reboot")
-    except Exception as e:
-        logger.error(f"Failed to initiate reboot: {e}")
-        raise
-
-def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
-    """
-    Resets the NVRAM by deleting all files in the specified path for selected devices.
-
-    :param nvram_path: Path to the NVRAM directory on the devices.
-    :param selected_devices: List of device names chosen for NVRAM reset.
-    :return: None
-    """
-    devices_to_process = get_devices_to_process(selected_devices)
-    
-    for device in devices_to_process:
-        session = create_session(device)
-        if not session:
-            continue
-
-        try:
-            logger.info(f"Resetting NVRAM for device: {device['name']} at {nvram_path}")
-            session.RemoveFiles(f"{nvram_path}/*").Check()
-            logger.info(f"Successfully reset NVRAM for {device['name']}")
-            reboot(session)
-        except Exception as e:
-            logger.error(f"Error resetting NVRAM for {device['name']}: {e}")
-        finally:
-            session.Dispose()
-
-def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
-    """
-    Performs a demo reset on the NVRAM by deleting all files except 'Demo.dat'.
-    If 'Demo.dat' does not exist on the device, it is pushed from the local './config/Demo.dat'.
-
-    :param nvram_path: Path to the NVRAM directory on the devices.
-    :param selected_devices: List of device names chosen for the demo reset.
-    :return: None
-    """
-    devices_to_process = get_devices_to_process(selected_devices)
-    local_demo_path = os.path.abspath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
-
-    for device in devices_to_process:
-        session = create_session(device)
-        if not session:
-            continue
-
-        try:
-            logger.info(f"Running demo NVRAM reset for device: {device['name']}")
-            
-            # List all files in nvram_path and check if 'Demo.dat' is present
-            remote_directory = session.ListDirectory(nvram_path)
-            demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
-
-            if demo_file_found:
-                # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
-                logger.info(f"'Demo.dat' found in {nvram_path}")
-                files_to_delete = [file for file in remote_directory.Files if file.Name != "Demo.dat" and file.Name != "." and file.Name != ".."]
-
-                # Delete each file except for 'Demo.dat'
-                for file in files_to_delete:
-                    logger.debug(f"Removing: {nvram_path}/{file.Name}")
-                    session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
-                    
-                logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
-                reboot(session)
-            
-            else:
-                logger.info(f"'Demo.dat' not found in {nvram_path}, uploading from {local_demo_path}...")
-                
-                if os.path.exists(local_demo_path):
-                    remount_nvram_as_rw(session)
-                    session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
-                    logger.info(f"'Demo.dat' successfully uploaded to {nvram_path}")
-                    reboot(session)
-                else:
-                    logger.error(f"Local 'Demo.dat' not found at {local_demo_path}")
-                    return
-
-            logger.info(f"Successfully demo-reset NVRAM for {device['name']}")
-        except Exception as e:
-            logger.error(f"Error during demo reset for {device['name']}: {e}")
-        finally:
-            session.Dispose()
+    logger.info("Completed file version comparison")
 
 def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]], master_files: Dict[str, str]) -> None:
     """
@@ -433,28 +259,187 @@ def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]], ma
         message += f"{device}:\n" + "\n".join(files) + "\n\n"
 
     # Add master_files to the message
-    message += "Master files:\n" + "\n".join(master_files.keys())
+    message += "Master files:\n" + "\n".join(sorted(master_files.keys()))
 
+    logger.info("Displaying outdated files to user")
     messagebox.showinfo("Outdated ISO Files", message)
 
-def test_winscp_session():
+def remount_flash_as_rw(session: Session, device_name: str) -> None:
     """
-    Tests the creation and opening of a WinSCP session with example connection parameters.
+    Remounts the /mnt/flash directory with read-write permissions using the specified session.
 
+    :param session: Active WinSCP session to execute the remount command.
+    :param device_name: Name of the device.
+    """
+    device_logger = logging.LoggerAdapter(logger, {'device': device_name})
+    try:
+        device_logger.debug("Remounting /mnt/flash as read-write")
+        session.ExecuteCommand("mount /mnt/flash -o remount,rw")
+        device_logger.info("Successfully remounted /mnt/flash as read-write")
+    except Exception as e:
+        device_logger.error(f"Failed to remount /mnt/flash as read-write: {e}", exc_info=True)
+        raise
+
+def remount_nvram_as_rw(session: Session, device_name: str) -> None:
+    """
+    Remounts the /mnt/nvram directory with read-write permissions using the specified session.
+
+    :param session: Active WinSCP session to execute the remount command.
+    :param device_name: Name of the device.
+    """
+    device_logger = logging.LoggerAdapter(logger, {'device': device_name})
+    try:
+        device_logger.debug("Remounting /mnt/nvram as read-write")
+        session.ExecuteCommand("mount /mnt/nvram -o remount,rw")
+        device_logger.info("Successfully remounted /mnt/nvram as read-write")
+    except Exception as e:
+        device_logger.error(f"Failed to remount /mnt/nvram as read-write: {e}", exc_info=True)
+        raise
+
+def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
+    """
+    Updates .iso and .sig files on selected devices by deleting outdated files and uploading the latest versions.
+
+    :param selected_devices: List of device names chosen for the update.
+    :param master_payload_folder: Path to the local folder containing the latest .iso and .sig files.
+    """
+    logger.info("Starting file version update")
+    flash_path = '/mnt/flash'
+    devices_to_process = get_devices_to_process(selected_devices)
+    master_files = {
+        file: os.path.join(master_payload_folder, file)
+        for file in os.listdir(master_payload_folder) if file.endswith('.iso') or file.endswith('.sig')
+    }
+
+    transfer_options = get_transfer_options()
+
+    for device in devices_to_process:
+        device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+        with device_session(device) as session:
+            if not session:
+                device_logger.error("Session could not be established. Skipping device.")
+                continue
+
+            try:
+                device_logger.info("Checking for outdated or missing files")
+                remote_files = session.ListDirectory(flash_path).Files
+                device_files = [file.Name for file in remote_files if file.Name.endswith('.iso') or file.Name.endswith('.sig')]
+
+                outdated_files = [file for file in device_files if file not in master_files]
+                missing_files = [file for file in master_files if file not in device_files]
+
+                if outdated_files or missing_files:
+                    remount_flash_as_rw(session, device['name'])
+
+                    if outdated_files:
+                        device_logger.info(f"Deleting outdated files: {outdated_files}")
+                        for file in outdated_files:
+                            session.RemoveFiles(f"{flash_path}/{file}").Check()
+
+                    device_logger.info("Uploading latest files")
+                    for file, path in master_files.items():
+                        session.PutFiles(path, f"{flash_path}/{file}", False, transfer_options).Check()
+                else:
+                    device_logger.info("No outdated or missing files found")
+
+            except Exception as e:
+                device_logger.error(f"Error updating files: {e}", exc_info=True)
+
+    logger.info("Completed file version update")
+
+def reboot(session: Session, device_name: str) -> None:
+    """
+    Reboots the device using the specified session.
+
+    :param session: Active WinSCP session to execute the reboot command.
+    :param device_name: Name of the device.
+    """
+    device_logger = logging.LoggerAdapter(logger, {'device': device_name})
+    try:
+        device_logger.info("Initiating reboot")
+        session.ExecuteCommand("reboot")
+        device_logger.info("Reboot command sent successfully")
+    except Exception as e:
+        device_logger.error(f"Failed to initiate reboot: {e}", exc_info=True)
+        raise
+
+def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
+    """
+    Resets the NVRAM by deleting all files in the specified path for selected devices.
+
+    :param nvram_path: Path to the NVRAM directory on the devices.
+    :param selected_devices: List of device names chosen for NVRAM reset.
     :return: None
     """
-    session = Session()
-    session_options = SessionOptions()
-    session_options.Protocol = Protocol.Sftp
-    session_options.HostName = '172.17.28.65'  # Use valid hostname
-    session_options.UserName = 'root'
-    session_options.Password = 'root1234'
-    session_options.GiveUpSecurityAndAcceptAnySshHostKey = True
+    logger.info("Starting NVRAM reset")
+    devices_to_process = get_devices_to_process(selected_devices)
 
-    try:
-        session.Open(session_options)
-        print("Session successfully created")
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        session.Dispose()
+    for device in devices_to_process:
+        device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+        with device_session(device) as session:
+            if not session:
+                device_logger.error("Session could not be established. Skipping device.")
+                continue
+
+            try:
+                device_logger.info(f"Resetting NVRAM at {nvram_path}")
+                session.RemoveFiles(f"{nvram_path}/*").Check()
+                device_logger.info("NVRAM reset successfully")
+                reboot(session, device['name'])
+            except Exception as e:
+                device_logger.error(f"Error resetting NVRAM: {e}", exc_info=True)
+
+    logger.info("Completed NVRAM reset")
+
+def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
+    """
+    Performs a demo reset on the NVRAM by deleting all files except 'Demo.dat'.
+    If 'Demo.dat' does not exist on the device, it is pushed from the local './config/Demo.dat'.
+
+    :param nvram_path: Path to the NVRAM directory on the devices.
+    :param selected_devices: List of device names chosen for the demo reset.
+    :return: None
+    """
+    logger.info("Starting NVRAM demo reset")
+    devices_to_process = get_devices_to_process(selected_devices)
+    local_demo_path = os.path.abspath(os.getenv('LOCAL_DEMO_PATH', './config/Demo.dat'))
+
+    for device in devices_to_process:
+        device_logger = logging.LoggerAdapter(logger, {'device': device['name']})
+        with device_session(device) as session:
+            if not session:
+                device_logger.error("Session could not be established. Skipping device.")
+                continue
+
+            try:
+                device_logger.info("Checking for 'Demo.dat'")
+                # List all files in nvram_path and check if 'Demo.dat' is present
+                remote_directory = session.ListDirectory(nvram_path)
+                demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
+
+                if demo_file_found:
+                    # Delete all files except 'Demo.dat'
+                    device_logger.info("'Demo.dat' found. Deleting other files.")
+                    files_to_delete = [file for file in remote_directory.Files if file.Name not in ["Demo.dat", ".", ".."]]
+
+                    for file in files_to_delete:
+                        session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
+
+                    device_logger.info("NVRAM demo reset completed")
+                    reboot(session, device['name'])
+
+                else:
+                    device_logger.info("'Demo.dat' not found. Uploading from local path.")
+                    if os.path.exists(local_demo_path):
+                        remount_nvram_as_rw(session, device['name'])
+                        session.PutFiles(local_demo_path, f"{nvram_path}/Demo.dat").Check()
+                        device_logger.info("'Demo.dat' uploaded successfully")
+                        reboot(session, device['name'])
+                    else:
+                        device_logger.error(f"Local 'Demo.dat' not found at {local_demo_path}")
+                        continue
+
+            except Exception as e:
+                device_logger.error(f"Error during NVRAM demo reset: {e}", exc_info=True)
+
+    logger.info("Completed NVRAM demo reset")
