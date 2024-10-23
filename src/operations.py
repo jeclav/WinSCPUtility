@@ -114,7 +114,6 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             transfer_options.PreserveDirectories = True
             transfer_options.SpeedLimit = 0
 
-
             # Download logs from /tmp/logs/ with subfolder structure preserved
             result: TransferOperationResult = session.GetFiles("/tmp/logs/*", device_download_folder + "\\*", False, transfer_options)
             result.Check()
@@ -122,10 +121,12 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             # Download logs from /mnt/log/ with subfolder structure preserved        
             result: TransferOperationResult = session.GetFiles("/mnt/log/*", device_download_folder + "\\*", False, transfer_options)
             result.Check()
-            
-
-
+                
             logger.info(f"Successfully downloaded logs for {device['name']}")
+
+            # Call log_file_versions to get the list of .iso files and write to "PAYLOAD" in device_download_folder
+            log_file_versions(session, device_download_folder)
+
         except Exception as e:
             success = False
             logger.error(f"Error downloading logs for {device['name']}: {e}")
@@ -133,6 +134,30 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             session.Dispose()
 
     return success
+
+def log_file_versions(session: Session, device_download_folder: str) -> None:
+    """
+    Retrieves a list of all .iso files in the device and writes it to a .txt file named "PAYLOAD" in the device_download_folder.
+
+    :param session: Active WinSCP session for the device.
+    :param device_download_folder: Path to the local directory where the "PAYLOAD" file should be saved.
+    :return: None
+    """
+    flash_path = '/mnt/flash'
+
+    try:
+        remote_files = session.ListDirectory(flash_path).Files
+        iso_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
+
+        # Write the list to a file named "PAYLOAD" in device_download_folder
+        payload_file_path = os.path.join(device_download_folder, "PAYLOAD")
+        with open(payload_file_path, 'w') as payload_file:
+            for file_name in iso_files:
+                payload_file.write(file_name + '\n')
+
+        logger.info(f"PAYLOAD file written to {payload_file_path}")
+    except Exception as e:
+        logger.error(f"Error getting files for device: {e}")
 
 def compare_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
@@ -168,7 +193,7 @@ def compare_file_versions(selected_devices: List[str], master_payload_folder: st
         finally:
             session.Dispose()
 
-    display_outdated_files_to_user(outdated_files_info)
+    display_outdated_files_to_user(outdated_files_info, master_files)
 
 def remount_flash_as_rw(session: Session) -> None:
     """
@@ -186,7 +211,7 @@ def remount_flash_as_rw(session: Session) -> None:
     
 def remount_nvram_as_rw(session: Session) -> None:
     """
-    Remounts the /mnt/flash directory with read-write permissions using the specified session.
+    Remounts the /mnt/nvram directory with read-write permissions using the specified session.
 
     :param session: Active WinSCP session to execute the remount command.
     """
@@ -200,16 +225,16 @@ def remount_nvram_as_rw(session: Session) -> None:
 
 def update_file_versions(selected_devices: List[str], master_payload_folder: str) -> None:
     """
-    Updates .iso files on selected devices by deleting outdated files and uploading the latest versions.
+    Updates .iso and .sig files on selected devices by deleting outdated files and uploading the latest versions.
 
     :param selected_devices: List of device names chosen for the update.
-    :param master_payload_folder: Path to the local folder containing the latest .iso files.
+    :param master_payload_folder: Path to the local folder containing the latest .iso and .sig files.
     """
     flash_path = '/mnt/flash'
     devices_to_process = get_devices_to_process(selected_devices)
     master_files = {
         file: os.path.join(master_payload_folder, file)
-        for file in os.listdir(master_payload_folder) if file.endswith('.iso')
+        for file in os.listdir(master_payload_folder) if file.endswith('.iso') or file.endswith('.sig')
     }
 
     for device in devices_to_process:
@@ -218,22 +243,30 @@ def update_file_versions(selected_devices: List[str], master_payload_folder: str
             continue
 
         try:
-            # Remount the flash path as read-write before making any changes
-            remount_flash_as_rw(session)
-
-            logger.info(f"Updating .iso files for device: {device['name']}")
+            logger.info(f"Updating .iso and .sig files for device: {device['name']}")
             remote_files = session.ListDirectory(flash_path).Files
-            device_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
+            device_files = [file.Name for file in remote_files if file.Name.endswith('.iso') or file.Name.endswith('.sig')]
+
             outdated_files = [file for file in device_files if file not in master_files]
 
-            if outdated_files:
-                logger.info(f"Deleting outdated files: {outdated_files}")
-                for file in outdated_files:
-                    session.RemoveFiles(f"{flash_path}/{file}").Check()
+            # Determine if there are files to upload (missing on device)
+            missing_files = [file for file in master_files if file not in device_files]
+
+            if outdated_files or missing_files:
+                # Remount the flash path as read-write before making any changes
+                remount_flash_as_rw(session)
+
+                if outdated_files:
+                    logger.info(f"Deleting outdated files: {outdated_files}")
+                    for file in outdated_files:
+                        session.RemoveFiles(f"{flash_path}/{file}").Check()
 
                 logger.info(f"Uploading latest files for {device['name']}")
                 for file, path in master_files.items():
                     session.PutFiles(path, f"{flash_path}/{file}").Check()
+            else:
+                logger.info(f"No outdated or missing files for device {device['name']}")
+
         except Exception as e:
             logger.error(f"Error updating files for {device['name']}: {e}")
         finally:
@@ -243,7 +276,7 @@ def reboot(session: Session) -> None:
     """
     Reboots the device using the specified session.
 
-    :param session: Active WinSCP session to execute the remount command.
+    :param session: Active WinSCP session to execute the reboot command.
     """
     try:
         logger.info("Initiating reboot")
@@ -281,7 +314,7 @@ def nvram_reset(nvram_path: str, selected_devices: List[str]) -> None:
 def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
     """
     Performs a demo reset on the NVRAM by deleting all files except 'Demo.dat'.
-    If 'Demo.dat' does not exist on the device, it is pushed from the local './config/demo.dat'.
+    If 'Demo.dat' does not exist on the device, it is pushed from the local './config/Demo.dat'.
 
     :param nvram_path: Path to the NVRAM directory on the devices.
     :param selected_devices: List of device names chosen for the demo reset.
@@ -302,7 +335,6 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
             remote_directory = session.ListDirectory(nvram_path)
             demo_file_found = any(file.Name == "Demo.dat" for file in remote_directory.Files)
 
-
             if demo_file_found:
                 # Filter out 'Demo.dat' and delete the rest of the files in nvram_path
                 logger.info(f"'Demo.dat' found in {nvram_path}")
@@ -310,7 +342,7 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
 
                 # Delete each file except for 'Demo.dat'
                 for file in files_to_delete:
-                    logger.debug(f"'Removing: {nvram_path}/{file.Name}")
+                    logger.debug(f"Removing: {nvram_path}/{file.Name}")
                     session.RemoveFiles(f"{nvram_path}/{file.Name}").Check()
                     
                 logger.info(f"All files except 'Demo.dat' have been deleted from {nvram_path}")
@@ -334,13 +366,13 @@ def nvram_demo_reset(nvram_path: str, selected_devices: List[str]) -> None:
         finally:
             session.Dispose()
 
-
-def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) -> None:
+def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]], master_files: Dict[str, str]) -> None:
     """
     Displays a message box showing devices with outdated .iso files,
-    or a message when all files are up to date.
+    or a message when all files are up to date, and displays master files.
 
     :param outdated_files_info: A dictionary with device names as keys and a list of outdated .iso files as values.
+    :param master_files: A dictionary of master .iso files.
     :return: None
     """
     from tkinter import messagebox
@@ -355,8 +387,10 @@ def display_outdated_files_to_user(outdated_files_info: Dict[str, List[str]]) ->
     for device, files in outdated_files_info.items():
         message += f"{device}:\n" + "\n".join(files) + "\n\n"
 
-    messagebox.showinfo("Outdated ISO Files", message)
+    # Add master_files to the message
+    message += "Master files:\n" + "\n".join(master_files.keys())
 
+    messagebox.showinfo("Outdated ISO Files", message)
 
 def test_winscp_session():
     """
@@ -379,4 +413,3 @@ def test_winscp_session():
         print(f"Error: {e}")
     finally:
         session.Dispose()
-
