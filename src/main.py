@@ -38,6 +38,7 @@ def run_operations(
     download_path: str,
     master_payload_folder: str,
     selected_devices: List[str],
+    custom_name: str,
     on_complete: Callable = None,
     root: tk.Tk = None,
 ) -> None:
@@ -105,7 +106,7 @@ def run_operations(
                 if op == 'compare_file_versions':
                     compare_file_versions(selected_devices, master_payload_folder)
                 elif op == 'download_logs':
-                    download_logs(selected_devices, download_path)
+                    download_logs(selected_devices, download_path, custom_name)
                 elif op == 'update_file_versions':
                     update_file_versions(selected_devices, master_payload_folder)
                 elif op == 'nvram_reset':

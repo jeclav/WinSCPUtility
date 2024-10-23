@@ -47,6 +47,9 @@ class WinSCPAutomationApp:
         self.compare_file_versions.trace_add('write', self.on_operation_select)
         self.update_file_versions.trace_add('write', self.on_operation_select)
 
+        # Custom name variable
+        self.custom_name_var = tk.StringVar()
+
         # Create the layout for better user experience
         self.create_layout()
 
@@ -94,6 +97,16 @@ class WinSCPAutomationApp:
         self.create_button("Select Master Payload Folder", self.select_master_payload_folder, master_payload_folder_frame)
         self.master_payload_folder_label = tk.Label(master_payload_folder_frame, text=f"Master Payload Folder: {self.master_payload_folder}")
         self.master_payload_folder_label.pack(pady=5)  # Placed below the button
+
+        # Custom name entry for download_logs operation
+        custom_name_frame = tk.Frame(self.root)
+        custom_name_frame.pack(pady=10)
+
+        custom_name_label = tk.Label(custom_name_frame, text="Custom Name for Logs (optional):")
+        custom_name_label.pack(side=tk.LEFT)
+
+        custom_name_entry = tk.Entry(custom_name_frame, textvariable=self.custom_name_var)
+        custom_name_entry.pack(side=tk.LEFT)
 
         # Run operations button
         self.run_operations_button = self.create_button("Run Operations", self.run_operations_clicked)
@@ -297,6 +310,12 @@ class WinSCPAutomationApp:
             messagebox.showerror("Validation Error", str(e))
             return
 
+        # Get the custom name for logs if download_logs is selected
+        custom_name = None
+        if self.download_logs.get():
+            custom_name = self.custom_name_var.get().strip()
+            # Optionally, you can sanitize or validate the custom name here
+
         # Disable buttons during execution
         self.run_operations_button.config(state=tk.DISABLED, text="Running...")
         self.show_progress_bar()
@@ -307,6 +326,7 @@ class WinSCPAutomationApp:
             self.download_path,
             self.master_payload_folder,
             selected_devices,
+            custom_name,
             self.on_operations_complete,
             self.root
         )

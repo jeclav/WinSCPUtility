@@ -3,6 +3,7 @@ import clr
 import os
 import logging
 from typing import List, Dict, Optional
+from datetime import datetime
 
 # Initialize .NET Interop with pythonnet
 winscp_dll_path = os.path.abspath("lib/WinSCP/WinSCPnet.dll")
@@ -95,14 +96,45 @@ def load_devices(config_file: str) -> List[Dict[str, str]]:
 
     return devices
 
-def download_logs(selected_devices: List[str], download_path: str) -> bool:
+def sanitize_folder_name(name: str) -> str:
+    """
+    Sanitizes a folder name by removing or replacing invalid characters.
+
+    :param name: The original folder name.
+    :return: A sanitized folder name safe for use in file systems.
+    """
+    import re
+    invalid_chars = r'[<>:"/\\|?*]'
+    sanitized_name = re.sub(invalid_chars, '_', name)
+    return sanitized_name
+
+def download_logs(selected_devices: List[str], base_download_path: str, custom_name: Optional[str] = None) -> bool:
     """
     Downloads logs from selected devices to a specified local folder, preserving the subfolder structure.
+    Creates a parent folder named after the current date and time, optionally including a custom name provided by the user.
 
     :param selected_devices: List of device names chosen for log download.
-    :param download_path: Path to the local directory where logs should be downloaded.
+    :param base_download_path: Base path to the local directory where logs should be downloaded.
+    :param custom_name: Optional custom name to include in the parent folder name.
     :return: True if logs are successfully downloaded from all devices, False if errors occur for any device.
     """
+    # Get the current date and time
+    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Construct the parent folder name
+    if custom_name:
+        parent_folder_name = f"{current_datetime}-{custom_name}"
+    else:
+        parent_folder_name = current_datetime
+
+    # Ensure the parent folder name is valid
+    parent_folder_name = sanitize_folder_name(parent_folder_name)
+
+    # Create the parent folder
+    parent_folder_path = os.path.join(base_download_path, parent_folder_name)
+    os.makedirs(parent_folder_path, exist_ok=True)
+    logger.info(f"Created parent folder: {parent_folder_path}")
+
     devices_to_process = get_devices_to_process(selected_devices)
     success = True
 
@@ -112,8 +144,8 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
             continue
 
         try:
-            # Create a dedicated download folder for each device
-            device_download_folder = os.path.join(download_path, device['name'])
+            # Create a dedicated download folder for each device inside the parent folder
+            device_download_folder = os.path.join(parent_folder_path, device['name'])
             os.makedirs(device_download_folder, exist_ok=True)
 
             logger.info(f"Downloading logs for device: {device['name']} into {device_download_folder}")
@@ -144,10 +176,10 @@ def download_logs(selected_devices: List[str], download_path: str) -> bool:
 
 def log_file_versions(session: Session, device_download_folder: str) -> None:
     """
-    Retrieves a list of all .iso files in the device and writes it to a .txt file named "PAYLOAD" in the device_download_folder.
+    Retrieves a list of all .iso files in the device and writes it to a .txt file named "PAYLOAD.txt" in the device_download_folder.
 
     :param session: Active WinSCP session for the device.
-    :param device_download_folder: Path to the local directory where the "PAYLOAD" file should be saved.
+    :param device_download_folder: Path to the local directory where the "PAYLOAD.txt" file should be saved.
     :return: None
     """
     flash_path = '/mnt/flash'
@@ -156,13 +188,13 @@ def log_file_versions(session: Session, device_download_folder: str) -> None:
         remote_files = session.ListDirectory(flash_path).Files
         iso_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
 
-        # Write the list to a file named "PAYLOAD" in device_download_folder
+        # Write the list to a file named "PAYLOAD.txt" in device_download_folder
         payload_file_path = os.path.join(device_download_folder, "PAYLOAD.txt")
         with open(payload_file_path, 'w') as payload_file:
             for file_name in iso_files:
                 payload_file.write(file_name + '\n')
 
-        logger.info(f"PAYLOAD file written to {payload_file_path}")
+        logger.info(f"PAYLOAD.txt file written to {payload_file_path}")
     except Exception as e:
         logger.error(f"Error getting files for device: {e}")
 

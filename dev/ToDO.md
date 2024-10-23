@@ -23,7 +23,6 @@
 # Optimisations
 	- Session generation
 		- Preserve session in pipeline?
-		- Pass TransferOptions config globally
 		
 	
 # Debug
