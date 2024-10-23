@@ -9,7 +9,6 @@ from tkinter import ttk  # For the progress bar
 from typing import List
 from decorators import log_function_call
 from validation import validate_operations  # Import the validation function
-from utils import sanitize_folder_name  # Import sanitize_folder_name for custom name sanitization
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +217,6 @@ class WinSCPAutomationApp:
             self.download_path = os.path.normpath(folder_selected)
             self.save_setting("download_path", self.download_path)
             self.download_folder_label.config(text=f"Download Folder: {self.download_path}")
-            logger.info(f"Download folder set to: {self.download_path}")
 
     @log_function_call
     def select_master_payload_folder(self) -> None:
@@ -227,7 +225,6 @@ class WinSCPAutomationApp:
             self.master_payload_folder = os.path.normpath(folder_selected)
             self.save_setting("master_payload_folder", self.master_payload_folder)
             self.master_payload_folder_label.config(text=f"Master Payload Folder: {self.master_payload_folder}")
-            logger.info(f"Master payload folder set to: {self.master_payload_folder}")
 
     @log_function_call
     def load_saved_setting(self, key: str, default_value: str) -> str:
@@ -285,16 +282,13 @@ class WinSCPAutomationApp:
                     self.update_file_versions.set(False)
             # Show error message
             messagebox.showwarning("Invalid Selection", str(e))
-            logger.warning(f"Invalid operation selection: {e}")
 
     @log_function_call
     def run_operations_clicked(self):
-        logger.info("Run Operations button clicked")
         # Run operations
         selected_devices = self.get_selected_devices()
         if not selected_devices:
             messagebox.showwarning("No Devices Selected", "Please select at least one device.")
-            logger.warning("No devices selected")
             return
 
         selected_operations = {
@@ -307,7 +301,6 @@ class WinSCPAutomationApp:
 
         if not any(selected_operations.values()):
             messagebox.showwarning("No Operations Selected", "Please select at least one operation.")
-            logger.warning("No operations selected")
             return
 
         # Validate operations
@@ -315,19 +308,13 @@ class WinSCPAutomationApp:
             validate_operations(selected_operations)
         except ValueError as e:
             messagebox.showerror("Validation Error", str(e))
-            logger.error(f"Validation error: {e}")
             return
 
         # Get the custom name for logs if download_logs is selected
         custom_name = None
         if self.download_logs.get():
             custom_name = self.custom_name_var.get().strip()
-            # Optionally, sanitize or validate the custom name
-            if not custom_name:
-                custom_name = None  # Treat empty string as None
-            else:
-                custom_name = sanitize_folder_name(custom_name)
-                logger.debug(f"Custom name for logs: {custom_name}")
+            # Optionally, you can sanitize or validate the custom name here
 
         # Disable buttons during execution
         self.run_operations_button.config(state=tk.DISABLED, text="Running...")
@@ -350,4 +337,3 @@ class WinSCPAutomationApp:
         self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
         self.hide_progress_bar()
         messagebox.showinfo("Operations Complete", "Selected operations have completed.")
-        logger.info("Operations completed")
