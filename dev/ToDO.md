@@ -15,10 +15,7 @@
 	- Publish logs message to Teams?
 	
 		
-# GUI
-	- Inline selection box for handling file versions
-		- Get, Compare, and Update
-		
+# GUI		
 	- Transfer status progress bar
 		- Replace/Add additional progress bar when operations are running that map to actual transfer progress
 		
