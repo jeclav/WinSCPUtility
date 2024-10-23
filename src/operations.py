@@ -150,7 +150,7 @@ def log_file_versions(session: Session, device_download_folder: str) -> None:
         iso_files = [file.Name for file in remote_files if file.Name.endswith('.iso')]
 
         # Write the list to a file named "PAYLOAD" in device_download_folder
-        payload_file_path = os.path.join(device_download_folder, "PAYLOAD")
+        payload_file_path = os.path.join(device_download_folder, "PAYLOAD.txt")
         with open(payload_file_path, 'w') as payload_file:
             for file_name in iso_files:
                 payload_file.write(file_name + '\n')
