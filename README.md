@@ -6,7 +6,8 @@ The **WinSCP Automation Tool** is a Python-based application for **SGF platform*
 ## Features
 - **Device Management**: Load device configurations from an INI file and interact with any configuration of selected devices.
 - **File Operations**: Compare file versions, download logs, update file versions, on selected devices sequentially using WinSCP.
-- **NVRAM Management**: Perform regular or demo reset operations on NVRAM for selected devices.
+- **NVRAM Operations**: Perform regular or demo reset operations on NVRAM for selected devices.
+- **Chain Operations**: Operations are que'd to run sequentially (with validation) for greater automation. 
 
 
 ## Project Structure
