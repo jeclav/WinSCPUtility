@@ -1,6 +1,5 @@
 # src/gui.py
 
-import configparser
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, BooleanVar
@@ -9,6 +8,7 @@ from tkinter import ttk  # For the progress bar
 from typing import List
 from decorators import log_function_call
 from validation import validate_operations  # Import the validation function
+from config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +20,19 @@ class WinSCPAutomationApp:
     def __init__(self, root: tk.Tk, operations_callback: callable) -> None:
         logger.debug("Initializing WinSCPAutomationApp")
         self.root = root
-        self.root.title("WinSCP Automation Tool")
-        self.root.geometry("500x700")
-
+        
         self.operations_callback = operations_callback
 
-        self.config_file = os.path.normpath(os.getenv('CONFIG_FILE', 'devices.ini'))
-        logger.info(f"Config file path: {self.config_file}")
-
-        self.download_path = self.load_saved_setting("download_path", 'C:\\DownloadedLogs')
-        self.master_payload_folder = self.load_saved_setting("master_payload_folder", 'C:\\MasterPayload')
+        # Load paths from configuration
+        self.download_path = config_manager.get_user_setting(
+            "download_path", 
+            config_manager.get('paths.download_path')
+        )
+        self.master_payload_folder = config_manager.get_user_setting(
+            "master_payload_folder", 
+            config_manager.get('paths.master_payload_folder')
+        )
+        
         logger.info(f"Initial download path: {self.download_path}")
         logger.info(f"Initial master payload folder: {self.master_payload_folder}")
 
@@ -111,6 +114,12 @@ class WinSCPAutomationApp:
         # Run operations button
         self.run_operations_button = self.create_button("Run Operations", self.run_operations_clicked)
 
+        # Status label for operation progress
+        status_frame = tk.Frame(self.root)
+        status_frame.pack(pady=10, fill=tk.X, side=tk.BOTTOM)
+        self.status_label = tk.Label(status_frame, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_label.pack(fill=tk.X)
+
     @log_function_call
     def show_progress_bar(self):
         """
@@ -186,16 +195,15 @@ class WinSCPAutomationApp:
     @log_function_call
     def populate_device_list(self, listbox: tk.Listbox) -> None:
         listbox.delete(0, tk.END)
-        if not os.path.exists(self.config_file):
-            logger.error(f"Configuration file '{self.config_file}' not found.")
-            messagebox.showerror("Error", f"Configuration file '{self.config_file}' not found.")
+        
+        try:
+            devices = config_manager.get_devices()
+            for device_info in devices:
+                listbox.insert(tk.END, device_info['name'])
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(f"Error loading device list: {e}")
+            messagebox.showerror("Error", str(e))
             return
-
-        config = configparser.ConfigParser()
-        config.read(self.config_file)
-        devices = config.sections()
-        for device_name in devices:
-            listbox.insert(tk.END, device_name)
 
     @log_function_call
     def get_selected_devices(self) -> List[str]:
@@ -205,17 +213,18 @@ class WinSCPAutomationApp:
 
     @log_function_call
     def open_config_file(self) -> None:
-        if os.path.exists(self.config_file):
-            os.startfile(self.config_file)
+        config_file = config_manager.get('paths.config_file')
+        if os.path.exists(config_file):
+            os.startfile(config_file)
         else:
-            messagebox.showerror("Error", f"Configuration file '{self.config_file}' not found.")
+            messagebox.showerror("Error", f"Configuration file '{config_file}' not found.")
 
     @log_function_call
     def select_download_folder(self) -> None:
         folder_selected = filedialog.askdirectory(initialdir=self.download_path, title="Select Download Folder")
         if folder_selected:
             self.download_path = os.path.normpath(folder_selected)
-            self.save_setting("download_path", self.download_path)
+            config_manager.save_user_setting("download_path", self.download_path)
             self.download_folder_label.config(text=f"Download Folder: {self.download_path}")
 
     @log_function_call
@@ -223,30 +232,16 @@ class WinSCPAutomationApp:
         folder_selected = filedialog.askdirectory(initialdir=self.master_payload_folder, title="Select Master Payload Folder")
         if folder_selected:
             self.master_payload_folder = os.path.normpath(folder_selected)
-            self.save_setting("master_payload_folder", self.master_payload_folder)
+            config_manager.save_user_setting("master_payload_folder", self.master_payload_folder)
             self.master_payload_folder_label.config(text=f"Master Payload Folder: {self.master_payload_folder}")
 
     @log_function_call
-    def load_saved_setting(self, key: str, default_value: str) -> str:
-        settings_file = "user_settings.ini"
-        config = configparser.ConfigParser()
-        if os.path.exists(settings_file):
-            config.read(settings_file)
-            if config.has_section("Settings") and config.has_option("Settings", key):
-                return config.get("Settings", key)
-        return default_value
-
-    @log_function_call
-    def save_setting(self, key: str, value: str) -> None:
-        settings_file = "user_settings.ini"
-        config = configparser.ConfigParser()
-        if os.path.exists(settings_file):
-            config.read(settings_file)
-        if not config.has_section("Settings"):
-            config.add_section("Settings")
-        config.set("Settings", key, value)
-        with open(settings_file, "w") as configfile:
-            config.write(configfile)
+    def update_status(self, text: str) -> None:
+        """
+        Update the status label with the provided text.
+        """
+        self.status_label.config(text=text)
+        self.root.update_idletasks()
 
     @log_function_call
     def on_operation_select(self, *args):
@@ -276,9 +271,9 @@ class WinSCPAutomationApp:
             # Enforce dependencies
             if 'requires' in str(e):
                 # If operation requires another, uncheck it
-                if self.download_logs.get() and not self.compare_file_versions.get():
+                if 'download_logs' in str(e) and self.download_logs.get():
                     self.download_logs.set(False)
-                if self.update_file_versions.get() and not self.compare_file_versions.get():
+                if 'update_file_versions' in str(e) and self.update_file_versions.get():
                     self.update_file_versions.set(False)
             # Show error message
             messagebox.showwarning("Invalid Selection", str(e))
@@ -319,6 +314,7 @@ class WinSCPAutomationApp:
         # Disable buttons during execution
         self.run_operations_button.config(state=tk.DISABLED, text="Running...")
         self.show_progress_bar()
+        self.update_status("Starting operations...")
 
         # Call the callback function
         self.operations_callback(
@@ -336,4 +332,5 @@ class WinSCPAutomationApp:
         # Re-enable the button when the operation is done
         self.run_operations_button.config(state=tk.NORMAL, text="Run Operations")
         self.hide_progress_bar()
+        self.update_status("Ready")
         messagebox.showinfo("Operations Complete", "Selected operations have completed.")

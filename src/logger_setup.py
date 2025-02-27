@@ -1,43 +1,46 @@
 # src/logger_setup.py
-import logging
+
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 
-# ANSI escape codes for colored output
-RESET = "\x1b[0m"
-COLORS = {
-    'DEBUG': "\x1b[1;34m",    # Blue
-    'INFO': "\x1b[32m",     # Green
-    'WARNING': "\x1b[33m",  # Yellow
-    'ERROR': "\x1b[31m",    # Red
-    'CRITICAL': "\x1b[41m", # Red background
-}
-
-class ColorFormatter(logging.Formatter):
-    def format(self, record):
-        log_color = COLORS.get(record.levelname, RESET)
-        log_msg = super().format(record)
-        return f"{log_color}{log_msg}{RESET}"
-
-def setup_logger(log_file=None, log_level=logging.DEBUG):
-    """Set up a logger with colorized output and optional file logging."""
-    logger = logging.getLogger()
-    if not logger.hasHandlers():
-        logger.setLevel(log_level)
-
-        # Console handler with color output
-        console_handler = logging.StreamHandler()
-        console_formatter = ColorFormatter('%(asctime)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
-        logger.addHandler(console_handler)
-
-        # Optional file handler (if log_file is provided)
-        if log_file:
-            log_dir = os.path.dirname(log_file)
-            if log_dir and not os.path.exists(log_dir):
-                os.makedirs(log_dir, exist_ok=True)
-            file_handler = logging.FileHandler(os.path.normpath(log_file))
-            file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  # No color in file
-            file_handler.setFormatter(file_formatter)
-            logger.addHandler(file_handler)
-
-            
+def setup_logger(log_file='logs/debug.log', level=logging.DEBUG):
+    """
+    Set up the root logger with file and console handlers.
+    
+    :param log_file: Path to the log file
+    :param level: Minimum logging level
+    :return: None
+    """
+    # Create logs directory if it doesn't exist
+    log_dir = os.path.dirname(log_file)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # Configure the root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    
+    # Remove any existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Create file handler with rotation
+    # Maximum log file size is 5MB, keep 3 backup files
+    file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3)
+    file_handler.setLevel(level)
+    
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)  # Less verbose for console output
+    
+    # Create formatter and add it to both handlers
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Add the handlers to the root logger
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    logging.info("Logger initialized")

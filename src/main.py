@@ -18,12 +18,13 @@ from logger_setup import setup_logger
 from decorators import log_function_call
 from tkinter import messagebox
 from validation import validate_operations, OPERATION_RULES
+from config_manager import config_manager
 
 # Ensure environment variables are loaded
 load_dotenv()
 
 # Set up the root logger
-log_path = os.getenv('LOG_PATH', 'logs/debug.log')
+log_path = config_manager.get('paths.log_path')
 setup_logger(log_file=log_path)
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def run_operations(
 
     def execute_operations():
         logger.info("Running selected operations")
-        nvram_path = os.getenv('NVRAM_PATH', '/mnt/nvram')
+        nvram_path = config_manager.get('paths.nvram_path')
 
         # Sort operations based on their defined order
         selected_ops = [op for op, selected in selected_operations.items() if selected]
@@ -137,6 +138,12 @@ def main() -> None:
     Main function to initialize the GUI and run the application.
     """
     root = tk.Tk()
+    window_title = config_manager.get('ui.window_title')
+    window_size = config_manager.get('ui.window_size')
+    
+    root.title(window_title)
+    root.geometry(window_size)
+    
     app = WinSCPAutomationApp(root, run_operations)
     root.mainloop()
 
