@@ -1,4 +1,4 @@
-# validation.py
+# src/validation.py
 
 OPERATION_RULES = {
     'compare_file_versions': {
@@ -9,12 +9,12 @@ OPERATION_RULES = {
     'download_logs': {
         'order': 2,
         'excludes': [],
-        'requires': [],
+        'requires': ['compare_file_versions'],  
     },
     'update_file_versions': {
         'order': 3,
         'excludes': [],
-        'requires': [],
+        'requires': ['compare_file_versions'],  
     },
     'nvram_reset': {
         'order': 4,

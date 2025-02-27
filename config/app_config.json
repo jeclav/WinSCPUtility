@@ -1,0 +1,25 @@
+{
+  "paths": {
+    "download_path": "C:\\DownloadedLogs",
+    "master_payload_folder": "C:\\MasterPayload",
+    "log_path": "logs/debug.log",
+    "config_file": "./config/devices.ini",
+    "nvram_path": "/mnt/nvram",
+    "flash_path": "/mnt/flash",
+    "local_demo_path": "./config/Demo.dat",
+    "settings_file": "user_settings.ini"
+  },
+  "winscp": {
+    "dll_path": "lib/WinSCP/WinSCPnet.dll"
+  },
+  "ui": {
+    "window_title": "WinSCP Automation Tool",
+    "window_size": "500x700"
+  },
+  "operations": {
+    "confirm_before_reboot": true,
+    "backup_before_update": true,
+    "verify_after_update": true,
+    "max_transfer_threads": 1
+  }
+}
