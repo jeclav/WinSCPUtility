@@ -1,0 +1,13 @@
+# Core dependencies
+pythonnet>=2.5.2         # For .NET interop (clr module) with WinSCP
+python-dotenv>=0.19.0    # For loading environment variables from .env
+
+# GUI dependencies
+# tkinter is built into Python
+
+# Packaging tools - needed for creating the executable
+pyinstaller>=5.6.2       # For creating standalone executables
+pywin32>=303             # Required by PyInstaller on Windows
+
+# Documentation - not required at runtime
+# sphinx>=4.3.0          # For generating documentation (uncomment if needed)

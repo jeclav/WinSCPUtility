@@ -3,6 +3,17 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Sensitive configuration files
+config/devices.ini
+
+# Development directories
+dist/
+build/
+docs/
+resources/
+dev/
+tests/
+
 # User-specific files
 *.rsuser
 *.suo
