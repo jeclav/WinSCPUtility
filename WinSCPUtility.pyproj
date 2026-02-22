@@ -19,9 +19,12 @@
     <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include=".gitattributes" />
+    <Content Include=".gitignore" />
     <Content Include="config\devices.ini" />
     <Content Include="dev\ToDO.txt" />
     <Content Include="obj\Debug\WinSCPAutomation.pyproj.FileListAbsolute.txt" />
+    <Content Include="README.md" />
     <Content Include="requirements.txt" />
     <Content Include="user_settings.ini" />
   </ItemGroup>
