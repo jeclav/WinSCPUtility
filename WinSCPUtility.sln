@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11415.280 d18.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "WinSCPUtility", "WinSCPUtility.pyproj", "{B8BC6E78-C788-4C1B-AECF-7D082A6BD1CB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B8BC6E78-C788-4C1B-AECF-7D082A6BD1CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8BC6E78-C788-4C1B-AECF-7D082A6BD1CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FCFE0BC1-5A7F-4462-9F4E-E1D7A1B1B139}
+	EndGlobalSection
+EndGlobal
